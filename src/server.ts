@@ -44,7 +44,7 @@ app.use(cors({
   origin: [
     "http://localhost:5173",
     "http://localhost:4173",
-    "https://schools.gakenye-ndiritu.co.ke/"
+    "https://schools.gakenye-ndiritu.co.ke"
   ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -65,11 +65,24 @@ app.use('/api/', apiLimiter);      // General protection for all other endpoints
 
 // --- 5. HEALTH CHECK ---
 app.get('/', (_req: Request, res: Response) => {
+  const usage = process.memoryUsage();
   res.status(200).json({
+    success: true,
     message: "🏫 Junior School Management System API Operational",
     developer: "Gakenye Ndiritu",
     status: "Active",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development',
+    nodeVersion: process.version,
+    platform: process.platform,
+    memoryUsage: {
+      rss: `${Math.round(usage.rss / 1024 / 1024)} MB`,
+      heapTotal: `${Math.round(usage.heapTotal / 1024 / 1024)} MB`,
+      heapUsed: `${Math.round(usage.heapUsed / 1024 / 1024)} MB`,
+      external: `${Math.round(usage.external / 1024 / 1024)} MB`
+    },
+    cpuUsage: process.cpuUsage()
   });
 });
 
