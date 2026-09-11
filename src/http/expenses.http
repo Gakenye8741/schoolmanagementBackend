@@ -1,0 +1,57 @@
+@expensesUrl = http://localhost:5000/api/expenses
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
+@recordedBy = 4b6caa16-d2f1-49fe-bb91-490d4860d454
+
+### Variable placeholder for created expense ID during testing
+@expenseId = b713e8e0-d533-4d07-a2b9-15b7798fdf26
+
+### 1. Create School Expense Record
+POST {{expensesUrl}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Electricity Bill - March",
+  "category": "Utilities",
+  "amount": 35400.00,
+  "paymentMethod": "Bank",
+  "referenceCode": "BK98765432",
+  "recordedBy": "{{recordedBy}}",
+  "expenseDate": "2026-03-31"
+}
+
+### 2. Get All School Expenses for School
+GET {{expensesUrl}}/school/{{schoolId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 3. Get School Expenses Filtered by Category
+GET {{expensesUrl}}/school/{{schoolId}}/category?category=Utilities
+Authorization: Bearer {{schoolAdminToken}}
+
+### 4. Get School Expenses Within a Date Range
+GET {{expensesUrl}}/school/{{schoolId}}/date-range?startDate=2026-03-01&endDate=2026-03-31
+Authorization: Bearer {{schoolAdminToken}}
+
+### 5. Get School Expense Category Summary
+GET {{expensesUrl}}/school/{{schoolId}}/summary?startDate=2026-03-01&endDate=2026-03-31
+Authorization: Bearer {{schoolAdminToken}}
+
+### 6. Get School Expense by ID
+GET {{expensesUrl}}/{{expenseId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 7. Update School Expense Details
+PUT {{expensesUrl}}/{{expenseId}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "title": "Electricity Bill - March (Revised)",
+  "amount": 36000.00
+}
+
+### 8. Delete School Expense Record
+DELETE {{expensesUrl}}/{{expenseId}}
+Authorization: Bearer {{schoolAdminToken}}

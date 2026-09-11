@@ -1,0 +1,74 @@
+@communicationUrl = http://localhost:5000/api/communication
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
+@userId = 4b6caa16-d2f1-49fe-bb91-490d4860d454
+@recipientId = e87eac0b-e9a3-4d77-9351-12a1afe3e081
+@announcementId = 28f98f1c-7c34-4247-89fd-fbe7fff2e747
+@messageId = 3725ae04-74df-4088-b370-aa8ac3f89ac4
+
+### 1. Create School Announcement
+POST {{communicationUrl}}/announcements
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Opening Day Notice",
+  "message": "Term 1 officially opens on Friday 10th April 2026 at 10:00 AM.",
+  "targetAudience": "Parents",
+  "postedBy": "{{userId}}",
+  "sendViaSms": true
+}
+
+### 2. Get Announcements by School
+GET {{communicationUrl}}/announcements/school/{{schoolId}}?targetAudience=Parents
+Authorization: Bearer {{schoolAdminToken}}
+
+### 3. Get Announcement by ID
+GET {{communicationUrl}}/announcements/{{announcementId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 4. Update School Announcement
+PATCH {{communicationUrl}}/announcements/{{announcementId}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "title": "Updated Closing Day Notice",
+  "message": "Term 1 officially closes on Friday 10th April 2026 at 11:00 AM."
+}
+
+### 5. Send Direct Message
+POST {{communicationUrl}}/messages
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "senderId": "{{userId}}",
+  "receiverId": "{{recipientId}}",
+  "messageText": "Hello, I would like to discuss John's math progress this term."
+}
+
+### 6. Get User Inbox
+GET {{communicationUrl}}/messages/inbox/{{userId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 7. Get Conversation Thread Between Two Users
+GET {{communicationUrl}}/messages/conversation/{{userId}}/{{recipientId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 8. Get Direct Message by ID
+GET {{communicationUrl}}/messages/{{messageId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 9. Mark Direct Message as Read
+PATCH {{communicationUrl}}/messages/{{messageId}}/read
+Authorization: Bearer {{schoolAdminToken}}
+
+### 10. Delete Announcement
+DELETE {{communicationUrl}}/announcements/{{announcementId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 11. Delete Direct Message
+DELETE {{communicationUrl}}/messages/{{messageId}}
+Authorization: Bearer {{schoolAdminToken}}

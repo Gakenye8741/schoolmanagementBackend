@@ -1,0 +1,105 @@
+@authUrl = http://localhost:5000/api/auth
+@studentUrl = http://localhost:5000/api/students
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRhMDRlYjkzLTA5NGUtNDJmNi1iNzM2LTNlMDQ1ZjM0M2Q1MiIsImVtYWlsIjoiYWRtaW5AUm9zcy5jb20iLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiJiNjdhM2U2OC04ZGUxLTQ5MzgtYTcyMi04YjdlOGY1YzNjNmEiLCJpYXQiOjE3ODkwNjYxMzEsImV4cCI6MTc4OTY3MDkzMX0.g7Ms6g_JAYLP_ftI7IIoWu_Xf1XZf9CzOj2OMA5lmXU
+@parentOrStudentToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU3OGEzMjUwLTVhZjQtNGExMS04YzFiLTYzNGExZGFjZjhkYiIsImVtYWlsIjoicGFyZW50QGdtYWlsLmNvbSIsInJvbGUiOiJwYXJlbnQiLCJzY2hvb2xJZCI6IjkxOGEyN2YzLTIzMjEtNGY2OS1hMTVjLTljNjFmOWY0ZjgxOCIsImlhdCI6MTc4ODQ2NTQxNCwiZXhwIjoxNzg5MDcwMjE0fQ.t4mjrNVFC3K0gtoZsd-QCMaddG62UgCXsrtsdxyLJ-c
+@schoolId = b67a3e68-8de1-4938-a722-8b7e8f5c3c6a
+@classId = c021309a-4acb-43a8-b327-687d92c76922
+@studentId = b289a23a-465c-4f5b-94d5-17f813fd2bca
+
+@registeredStudentId = 9d935960-9b1a-4748-9cb4-fb1f8c53eb20
+@termId = 43530ca6-bd8f-4cf1-b45e-288ce29750d0
+@parentId = c5d4aa5d-52ac-4a41-a024-cf75a7676a17
+
+### 1. Register John Student User (Auth Service)
+POST {{authUrl}}/register/member
+Content-Type: application/json
+Cookie: token={{schoolAdminToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "alex Student",
+  "email": "alex.student1@school.edu",
+  "admissionNumber": "ADM/2026/0011",
+  "role": "student",
+  "password": "securepassword123"
+}
+
+### 2. Register Parent Guardian User (Auth Service)
+POST {{authUrl}}/register/member
+Content-Type: application/json
+Cookie: token={{schoolAdminToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Parent Guardian",
+  "email": "parent1@gmail1.com",
+  "phone": "+254798765432",
+  "role": "parent",
+  "password": "securepassword123"
+}
+
+### 3. Register Student Profile linked to Class & Parent (Students Service)
+POST {{studentUrl}}
+Cookie: token={{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "admissionNumber": "ADM/2026/0011",
+  "upiNumber": "UPI9876543210",
+  "parentId": "{{parentId}}",
+  "classId": "{{classId}}",
+  "dateOfBirth": "2015-06-12",
+  "gender": "Male",
+  "enrollmentDate": "2026-01-05",
+  "isEnrolled": true
+}
+
+### 4. Link Parent to Student (Auth Service)
+POST {{authUrl}}/link-parent
+Content-Type: application/json
+Cookie: token={{schoolAdminToken}}
+
+{
+  "studentId": "{{studentId}}",
+  "parentId": "{{parentId}}"
+}
+
+### 5. Get All Students by School (Students Service)
+GET {{studentUrl}}/school/{{schoolId}}
+Cookie: token={{parentOrStudentToken}}
+
+### 6. Get Student by ID with Full Relations (Students Service)
+GET {{studentUrl}}/{{registeredStudentId}}
+Cookie: token={{parentOrStudentToken}}
+
+### 7. Update Student Details (Students Service)
+PUT {{studentUrl}}/{{registeredStudentId}}
+Cookie: token={{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "gender": "Male",
+  "isEnrolled": true
+}
+
+### 8. Create Student Enrollment History Record (Students Service)
+POST {{studentUrl}}/enrollment-history
+Cookie: token={{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "studentId": "{{registeredStudentId}}",
+  "termId": "{{termId}}",
+  "gradeLevel": "Grade 5",
+  "stream": "East",
+  "status": "Active"
+}
+
+### 9. Get Student Enrollment History (Students Service)
+GET {{studentUrl}}/{{registeredStudentId}}/enrollment-history
+Cookie: token={{parentOrStudentToken}}
+
+### 10. Delete Student Record (Students Service)
+DELETE {{studentUrl}}/{{studentId}}
+Cookie: token={{schoolAdminToken}}

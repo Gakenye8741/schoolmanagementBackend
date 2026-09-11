@@ -1,0 +1,82 @@
+@baseUrl = http://localhost:5000/api/users
+@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImIzMGY2NjhhLTgyYTUtNGJlMi04ZTE2LTEyZTAxMjIzNzk4MiIsImVtYWlsIjoiYWRtaW5AcGxhdGZvcm0uY29tIiwicm9sZSI6InN1cGVyX2FkbWluIiwic2Nob29sSWQiOm51bGwsImlhdCI6MTc4OTA1MDgwNywiZXhwIjoxNzg5NjU1NjA3fQ.eJeoMOiHTlulIT9E7nb3_RtER6m_lVV10HX4ULLryY4
+@schoolId = b67a3e68-8de1-4938-a722-8b7e8f5c3c6a
+@userId = 167a75b7-f6f5-4038-8fcb-1bda5f02de08
+@classId = class-uuid-here
+
+### 1. Get Users (Super Admin sees all across schools; Pagination, Filtering, Search)
+GET {{baseUrl}}?page=1&limit=10&role=student&search=alex
+Cookie: token={{token}}
+
+### 1b. Get Users Filtered by School (Optional for Super Admin to target specific school)
+GET {{baseUrl}}?schoolId={{schoolId}}&page=1&limit=10
+Cookie: token={{token}}
+
+### 3. Get User By Email
+GET {{baseUrl}}/email?email=alex@Ross.com
+Cookie: token={{token}}
+
+### 3b. Get User By Email with explicit school context (if needed)
+GET {{baseUrl}}/email?email=annet@Ross.com&schoolId={{schoolId}}
+Cookie: token={{token}}
+
+### 4. Get Teachers By School (Super Admin can omit schoolId via query if service supports cross-school list, or pass schoolId)
+GET {{baseUrl}}/teachers?schoolId={{schoolId}}
+Cookie: token={{token}}
+
+### 5. Get All Students By School ID
+GET {{baseUrl}}/students?schoolId={{schoolId}}
+Cookie: token={{token}}
+
+### 6. Get Students By Class ID (Uncomment route in router if using)
+# GET {{baseUrl}}/students/class/{{classId}}
+# Cookie: token={{token}}
+
+### 7. Check Admission Number Availability
+GET {{baseUrl}}/check-admission?admissionNumber=ADM-2026-001&schoolId={{schoolId}}
+Cookie: token={{token}}
+
+### 8. Bulk Update User Status
+PATCH {{baseUrl}}/status/bulk?schoolId={{schoolId}}
+Cookie: token={{token}}
+Content-Type: application/json
+
+{
+  "userIds": ["uuid-1", "uuid-2"],
+  "isActive": false
+}
+
+### 9. Get Users Count By Role
+GET {{baseUrl}}/role/student/count?schoolId={{schoolId}}
+Cookie: token={{token}}
+
+### 10. Get User By ID
+GET {{baseUrl}}/{{userId}}
+Cookie: token={{token}}
+
+### 11. Update User Details
+PUT {{baseUrl}}/{{userId}}
+Cookie: token={{token}}
+Content-Type: application/json
+
+{
+  "name": "Jane Updated Doe",
+  "phone": "+254798765432"
+}
+
+### 12. Delete User
+DELETE {{baseUrl}}/{{userId}}
+Cookie: token={{token}}
+
+### 13. Update User Status (Activate/Deactivate)
+PATCH {{baseUrl}}/{{userId}}/status
+Cookie: token={{token}}
+Content-Type: application/json
+
+{
+  "isActive": true
+}
+
+### 14. Get Student Profile by User ID
+GET {{baseUrl}}/{{userId}}/student-profile
+Cookie: token={{token}}

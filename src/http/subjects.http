@@ -1,0 +1,91 @@
+@baseUrl = http://localhost:5000/api/subjects
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@parentOrStudentToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU3OGEzMjUwLTVhZjQtNGExMS04YzFiLTYzNGExZGFjZjhkYiIsImVtYWlsIjoicGFyZW50QGdtYWlsLmNvbSIsInJvbGUiOiJwYXJlbnQiLCJzY2hvb2xJZCI6IjkxOGEyN2YzLTIzMjEtNGY2OS1hMTVjLTljNjFmOWY0ZjgxOCIsImlhdCI6MTc4ODQ2NTQxNCwiZXhwIjoxNzg5MDcwMjE0fQ.t4mjrNVFC3K0gtoZsd-QCMaddG62UgCXsrtsdxyLJ-c
+@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
+@classId = c021309a-4acb-43a8-b327-687d92c76922
+@subjectId = aa47c717-0dd1-4ee6-b0f5-e8e7448f552f
+@teacherId = 90850ca5-9ed5-486c-a925-4108228c4904
+
+### 1. Create a Single Subject (School Admin)
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Mathematics Activities",
+  "code": "MATH-01",
+  "category": "Core"
+}
+
+### 2. Bulk Create Subjects (School Admin)
+POST {{baseUrl}}/bulk
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+{
+  "subjects": [
+    {
+      "schoolId": "{{schoolId}}",
+      "name": "English Language",
+      "code": "ENG-01",
+      "category": "Core"
+    },
+    {
+      "schoolId": "{{schoolId}}",
+      "name": "Kiswahili Lugha",
+      "code": "KIS-01",
+      "category": "Core"
+    },
+    {
+      "schoolId": "{{schoolId}}",
+      "name": "Computer Science",
+      "code": "CS-01",
+      "category": "Technical"
+    }
+  ]
+}
+
+### 3. List Subjects by School with Category Filter (Authenticated Parent/Student or Admin)
+GET {{baseUrl}}/school/{{schoolId}}?category=Core
+Content-Type: application/json
+Authorization: Bearer {{parentOrStudentToken}}
+
+### 4. List Subjects by Teacher ID (Authenticated)
+GET {{baseUrl}}/teacher/{{teacherId}}
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+### 5. Get Subject by ID (Authenticated)
+GET {{baseUrl}}/{{subjectId}}
+Content-Type: application/json
+Authorization: Bearer {{parentOrStudentToken}}
+
+### 6. Update Subject Details (School Admin)
+PUT {{baseUrl}}/{{subjectId}}
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+{
+  "name": "Advanced Mathematics",
+  "category": "Core"
+}
+
+### 7. Assign Teacher to Subject (School Admin)
+POST {{baseUrl}}/{{subjectId}}/teachers
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+{
+  "teacherId": "{{teacherId}}"
+}
+
+### 8. Remove Teacher from Subject (School Admin)
+DELETE {{baseUrl}}/{{subjectId}}/teachers/{{teacherId}}
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+### 9. Delete Subject (School Admin)
+DELETE {{baseUrl}}/{{subjectId}}
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}

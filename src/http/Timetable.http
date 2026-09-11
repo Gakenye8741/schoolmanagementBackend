@@ -1,0 +1,59 @@
+@baseUrl = http://localhost:5000/api/timetables
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@parentOrStudentToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU3OGEzMjUwLTVhZjQtNGExMS04YzFiLTYzNGExZGFjZjhkYiIsImVtYWlsIjoicGFyZW50QGdtYWlsLmNvbSIsInJvbGUiOiJwYXJlbnQiLCJzY2hvb2xJZCI6IjkxOGEyN2YzLTIzMjEtNGY2OS1hMTVjLTljNjFmOWY0ZjgxOCIsImlhdCI6MTc4ODQ2NTQxNCwiZXhwIjoxNzg5MDcwMjE0fQ.t4mjrNVFC3K0gtoZsd-QCMaddG62UgCXsrtsdxyLJ-c
+@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
+@mathSubjectId = aa47c717-0dd1-4ee6-b0f5-e8e7448f552f
+@englishSubjectId = 2fd7c6ff-142e-449c-b7ad-aa5cc78edf72
+@teacherId = 90850ca5-9ed5-486c-a925-4108228c4904
+@gradeLevel = Form 1
+@stream = North
+
+### 1. Generate Global School-Wide Timetable with Multiple Subject Quotas (School Admin)
+POST {{baseUrl}}/generate-global
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classes": [
+    { "gradeLevel": "{{gradeLevel}}", "stream": "{{stream}}" },
+    { "gradeLevel": "{{gradeLevel}}", "stream": "South" }
+  ],
+  "subjectQuotas": [
+    { "subjectId": "{{mathSubjectId}}", "weeklyTarget": 4 },
+    { "subjectId": "{{englishSubjectId}}", "weeklyTarget": 3 }
+  ],
+  "daysOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+  "periodsPerDay": 7
+}
+
+### 2. Upsert Single Timetable Slot for English (School Admin)
+POST {{baseUrl}}/slot
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "gradeLevel": "{{gradeLevel}}",
+  "stream": "{{stream}}",
+  "dayOfWeek": "Monday",
+  "periodNumber": 2,
+  "subjectId": "{{englishSubjectId}}",
+  "teacherId": "{{teacherId}}"
+}
+
+### 3. Audit School-Wide Timetable Clashes (School Admin)
+GET {{baseUrl}}/audit/{{schoolId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 4. Get Class Stream Timetable (Authenticated Parent/Student)
+GET {{baseUrl}}/class/{{schoolId}}/{{gradeLevel}}/{{stream}}
+Authorization: Bearer {{parentOrStudentToken}}
+
+### 5. Get Teacher Timetable (Authenticated User)
+GET {{baseUrl}}/teacher/{{teacherId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 6. Clear Entire Class Timetable (School Admin)
+DELETE {{baseUrl}}/class/{{schoolId}}/{{gradeLevel}}/{{stream}}
+Authorization: Bearer {{schoolAdminToken}}

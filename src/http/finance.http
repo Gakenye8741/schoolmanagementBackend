@@ -1,0 +1,120 @@
+@financeUrl = http://localhost:5000/api/finance
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@parentOrStudentToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU3OGEzMjUwLTVhZjQtNGExMS04YzFiLTYzNGExZGFjZjhkYiIsImVtYWlsIjoicGFyZW50QGdtYWlsLmNvbSIsInJvbGUiOiJwYXJlbnQiLCJzY2hvb2xJZCI6IjkxOGEyN2YzLTIzMjEtNGY2OS1hMTVjLTljNjFmOWY0ZjgxOCIsImlhdCI6MTc4ODQ2NTQxNCwiZXhwIjoxNzg5MDcwMjE0fQ.t4mjrNVFC3K0gtoZsd-QCMaddG62UgCXsrtsdxyLJ-c
+
+@bursarToken =  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImU4N2VhYzBiLWU5YTMtNGQ3Ny05MzUxLTEyYTFhZmUzZTA4MSIsImVtYWlsIjoiYnVyc2FyQHNjaG9vbC5lZHUiLCJyb2xlIjoiYnVyc2FyIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg2MjQ0NTEsImV4cCI6MTc4OTIyOTI1MX0.NKYibBMaHqASRJGHMHWBnqUlgK13eEHxWhPgqTfJJkc
+@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
+@registeredStudentId = 9d935960-9b1a-4748-9cb4-fb1f8c53eb20
+@termId = 43530ca6-bd8f-4cf1-b45e-288ce29750d0
+
+### Variable placeholder for created IDs during testing
+@feeItemId = f880fcca-67be-4533-8512-7dbac5021c13
+@structureId = 12723716-30da-46cc-85c0-b8d1a14e55c3
+@transactionId = 45851036-5657-41a2-897f-3b02fe9911aa
+
+### 1. Create Fee Item (e.g. Tuition Fee)
+POST {{financeUrl}}/items
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Tuition Fee",
+  "description": "Standard term tuition fee coverage",
+  "isOptional": false
+}
+
+### 2. Get All Fee Items by School
+GET {{financeUrl}}/items/school/{{schoolId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 3. Get Fee Item by ID
+GET {{financeUrl}}/items/{{feeItemId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 4. Update Fee Item
+PUT {{financeUrl}}/items/{{feeItemId}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "description": "Updated term tuition fee coverage for instruction and facilities"
+}
+
+### 5. Create Class Fee Structure (Assign amount to Grade Level for a Term)
+POST {{financeUrl}}/structures
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "termId": "{{termId}}",
+  "gradeLevel": "Grade 5",
+  "feeItemId": "{{feeItemId}}",
+  "amount": 15000
+}
+
+### 6. Get Class Fee Structures (Requires query parameters)
+GET {{financeUrl}}/structures?termId={{termId}}&gradeLevel=Grade 5
+Authorization: Bearer {{schoolAdminToken}}
+
+### 7. Update Class Fee Structure
+PUT {{financeUrl}}/structures/{{structureId}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "amount": 16000
+}
+
+### 8. Record Fee Transaction Payment
+POST {{financeUrl}}/transactions
+Authorization: Bearer {{bursarToken}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{registeredStudentId}}",
+  "amountPaid": 10000,
+  "balanceRemaining": 6000,
+  "paymentMethod": "M-Pesa",
+  "referenceCode": "QWE12345678",
+  "termId": "{{termId}}"
+}
+
+### 9. Get School Fee Transactions
+GET {{financeUrl}}/transactions/school/{{schoolId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 10. Get Student Fee Transactions
+GET {{financeUrl}}/transactions/student/{{registeredStudentId}}
+Authorization: Bearer {{parentOrStudentToken}}
+
+### 11. Update Fee Transaction
+PUT {{financeUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{bursarToken}}
+Content-Type: application/json
+
+{
+  "amountPaid": 12000,
+  "balanceRemaining": 4000
+}
+
+### 12. Get Student Fee Statement (Requires query parameters)
+GET {{financeUrl}}/statements/student/{{registeredStudentId}}?termId={{termId}}&gradeLevel=Grade 5
+Authorization: Bearer {{parentOrStudentToken}}
+
+### 13. Get School Term Collection Summary (Requires query parameters)
+GET {{financeUrl}}/collections/school/{{schoolId}}?termId={{termId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 14. Delete Class Fee Structure
+DELETE {{financeUrl}}/structures/{{structureId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 15. Delete Fee Item
+DELETE {{financeUrl}}/items/{{feeItemId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 16. Delete Fee Transaction
+DELETE {{financeUrl}}/transactions/{{transactionId}}
+Authorization: Bearer {{schoolAdminToken}}

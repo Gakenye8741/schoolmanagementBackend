@@ -1,0 +1,51 @@
+@baseUrl = http://localhost:5000/api
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@parentOrStudentToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU3OGEzMjUwLTVhZjQtNGExMS04YzFiLTYzNGExZGFjZjhkYiIsImVtYWlsIjoicGFyZW50QGdtYWlsLmNvbSIsInJvbGUiOiJwYXJlbnQiLCJzY2hvb2xJZCI6IjkxOGEyN2YzLTIzMjEtNGY2OS1hMTVjLTljNjFmOWY0ZjgxOCIsImlhdCI6MTc4ODQ2NTQxNCwiZXhwIjoxNzg5MDcwMjE0fQ.t4mjrNVFC3K0gtoZsd-QCMaddG62UgCXsrtsdxyLJ-c
+@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
+@classId = c021309a-4acb-43a8-b327-687d92c76922
+@teacherId = 90850ca5-9ed5-486c-a925-4108228c4904
+
+### 1. Create a new class (Admin / School Admin)
+POST {{baseUrl}}/classes
+Content-Type: application/json
+Cookie: token={{schoolAdminToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "gradeLevel": "Grade 5",
+  "stream": "East",
+  "classTeacherId": "{{teacherId}}",
+  "academicYear": "2026"
+}
+
+### 2. List all classes for a school (Any Authenticated User: Admin, Teacher, Student, Parent)
+GET {{baseUrl}}/classes/school/{{schoolId}}?academicYear=2026
+Cookie: token={{parentOrStudentToken}}
+
+### 3. Get a specific class by ID (Any Authenticated User)
+GET {{baseUrl}}/classes/{{classId}}
+Cookie: token={{parentOrStudentToken}}
+
+### 4. Update class details (Admin / School Admin)
+PUT {{baseUrl}}/classes/{{classId}}
+Content-Type: application/json
+Cookie: token={{schoolAdminToken}}
+
+{
+  "gradeLevel": "Grade 5",
+  "stream": "Eest",
+  "academicYear": "2026"
+}
+
+### 5. Assign or change class teacher (Admin / School Admin)
+PATCH {{baseUrl}}/classes/{{classId}}/teacher
+Content-Type: application/json
+Cookie: token={{schoolAdminToken}}
+
+{
+  "classTeacherId": "{{teacherId}}"
+}
+
+### 6. Delete a class (Super Admin only)
+DELETE {{baseUrl}}/classes/{{classId}}
+Cookie: token={{schoolAdminToken}}

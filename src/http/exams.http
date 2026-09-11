@@ -1,0 +1,110 @@
+@examsUrl = http://localhost:5000/api/exams
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+
+### Variable placeholders for testing references
+@termId = 43530ca6-bd8f-4cf1-b45e-288ce29750d0
+@examId = 0abc3db2-956e-4918-b9df-1fbfa9467962
+@assessmentId = d7afdd1f-c63b-4e01-a42e-92aa06b1ed29
+@studentId = d3aadd77-7f9f-2bc6-994b-4ff7fb160d44
+@subjectId = aa47c717-0dd1-4ee6-b0f5-e8e7448f552f
+@teacherId = a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+
+### 1. Create a Term Exam Record
+POST {{examsUrl}}/term-exams
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "termId": "{{termId}}",
+  "examTitle": "Term 1 Mid-Term Assessment",
+  "examCategory": "Mid-Term",
+  "startDate": "2026-03-10",
+  "endDate": "2026-03-14",
+  "isLocked": false
+}
+
+### 2. Get Term Exams by Term ID
+GET {{examsUrl}}/term-exams/term/{{termId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 3. Get Term Exam by ID
+GET {{examsUrl}}/term-exams/{{examId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 4. Update Term Exam Details
+PUT {{examsUrl}}/term-exams/{{examId}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "examTitle": "Term 1 Mid-Term Assessment (Updated)",
+  "isLocked": false
+}
+
+### 5. Create a Single CBC Assessment Score
+POST {{examsUrl}}/assessments
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "studentId": "{{studentId}}",
+  "subjectId": "{{subjectId}}",
+  "termId": "{{termId}}",
+  "examId": "{{examId}}",
+  "strand": "Numbers",
+  "subStrand": "Whole Numbers",
+  "scoreValue": 18.00,
+  "outOf": 20.00,
+  "performanceLevel": "EE",
+  "teacherRemarks": "Shows exceptional analytical and mathematical skills.",
+  "assessedBy": "{{teacherId}}"
+}
+
+### 6. Bulk Create/Update CBC Assessments (Class Marksheet)
+POST {{examsUrl}}/assessments/bulk
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+[
+  {
+    "studentId": "{{studentId}}",
+    "subjectId": "{{subjectId}}",
+    "termId": "{{termId}}",
+    "examId": "{{examId}}",
+    "strand": "Numbers",
+    "subStrand": "Whole Numbers",
+    "scoreValue": 18.00,
+    "outOf": 20.00,
+    "performanceLevel": "EE",
+    "teacherRemarks": "Exceptional work.",
+    "assessedBy": "{{teacherId}}"
+  }
+]
+
+### 7. Get CBC Assessment by ID
+GET {{examsUrl}}/assessments/{{assessmentId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 8. Get Student CBC Assessments
+GET {{examsUrl}}/assessments/student/{{studentId}}?termId={{termId}}&examId={{examId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 9. Get Exam Subject Performance Analytics
+GET {{examsUrl}}/assessments/analytics/exam/{{examId}}/subject/{{subjectId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 10. Get Student Term Report Card Summary
+GET {{examsUrl}}/assessments/report-card/student/{{studentId}}/term/{{termId}}/exam/{{examId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 11. Get Exam Summary Analytics (School/Grade Breakdown)
+GET {{examsUrl}}/assessments/analytics/exam/{{examId}}/summary
+Authorization: Bearer {{schoolAdminToken}}
+
+### 12. Delete CBC Assessment Record
+DELETE {{examsUrl}}/assessments/{{assessmentId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 13. Delete Term Exam Record
+DELETE {{examsUrl}}/term-exams/{{examId}}
+Authorization: Bearer {{schoolAdminToken}}

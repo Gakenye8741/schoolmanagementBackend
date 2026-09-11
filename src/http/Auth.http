@@ -1,0 +1,158 @@
+# ### ==========================================
+# ### SCHOOL MANAGEMENT SYSTEM - AUTH API TESTS (COOKIE-BASED AUTH)
+# ### ==========================================
+
+@baseUrl = http://localhost:5000/api/auth
+@schoolId = 123c89a4-87cd-4395-a902-64f5cb260380
+@userId = replace-with-user-uuid
+@resetToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjM5NTg2OWVjLWQ1YmItNGZhNS1iNjJkLWEwZmIxZjhiNzU2MyIsImVtYWlsIjoicHJpbmNpcGFsMUBzY2hvb2wuZWR1Iiwicm9sZSI6InNjaG9vbF9hZG1pbiIsInNjaG9vbElkIjoiMTIzYzg5YTQtODdjZC00Mzk1LWE5MDItNjRmNWNiMjYwMzgwIiwiaWF0IjoxNzg5MDMxNDgzLCJleHAiOjE3ODk2MzYyODN9.O5ucDdponBKzHzHXwj_Fziao4LXjWOT4alEWzTofCr0
+
+### 1. Register a Super Admin (Platform Level - No School ID)
+POST {{baseUrl}}/register/super-admin
+Content-Type: application/json
+
+{
+  "name": "Super Admin User",
+  "email": "admin@platform.com",
+  "phone": "+254700000000",
+  "nationalId": "11111111",
+  "password": "password123#"
+}
+
+### 2. Register a School Admin (Requires Super Admin Auth Cookie)
+POST {{baseUrl}}/register/school-admin
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "School Principal",
+  "email": "principal1@school.edu",
+  "phone": "+254711111113",
+  "nationalId": "222222223",
+  "tscNumber": "TSC9876542",
+  "password": "securepassword123"
+}
+
+### 3. Register a Teacher (School Member - Requires School Admin Auth Cookie)
+POST {{baseUrl}}/register/member
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Jane Teacher",
+  "email": "jane.teacher@school.edu",
+  "phone": "+254712345678",
+  "nationalId": "12345678",
+  "tscNumber": "TSC123456",
+  "role": "teacher",
+  "password": "securepassword123"
+}
+
+### 4. Register a Student (School Member - Requires School Admin Auth Cookie)
+POST {{baseUrl}}/register/member
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "John Student",
+  "email": "john.student@school.edu",
+  "admissionNumber": "ADM/2026/001",
+  "role": "student",
+  "password": "securepassword123"
+}
+
+### 5. Register a Bursar (School Member - Requires School Admin Auth Cookie)
+POST {{baseUrl}}/register/member
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Bursar Officer",
+  "email": "bursar@school.edu",
+  "role": "bursar",
+  "password": "securepassword123"
+}
+
+### 6. Register a Parent (School Member - Requires School Admin Auth Cookie)
+POST {{baseUrl}}/register/member
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Parent Guardian",
+  "email": "parent@gmail.com",
+  "phone": "+254798765432",
+  "role": "parent",
+  "password": "securepassword123"
+}
+
+### 7. Login User (Automatically sets the HttpOnly cookie in REST Client)
+POST {{baseUrl}}/login
+Content-Type: application/json
+
+{
+  "identifier": "admin@platform.com",
+  "password": "password123#"
+}
+
+### 8. Logout User (Clears the HttpOnly cookie)
+POST {{baseUrl}}/logout
+Content-Type: application/json
+
+### 9. Forgot Password
+POST {{baseUrl}}/forgot-password
+Content-Type: application/json
+
+{
+  "email": "jane.teacher@school.edu"
+}
+
+### 10. Reset Password
+POST {{baseUrl}}/reset-password
+Content-Type: application/json
+
+{
+  "resetToken": "{{resetToken}}",
+  "newPassword": "newsecurepassword123"
+}
+
+### 11. Change Password (Authenticated via Cookie)
+POST {{baseUrl}}/change-password
+Content-Type: application/json
+
+{
+  "oldPassword": "securepassword123",
+  "newPassword": "newsecurepassword123"
+}
+
+### 12. Get User Profile (Authenticated via Cookie)
+GET {{baseUrl}}/profile/{{userId}}
+
+### 13. Update User Profile (Authenticated via Cookie)
+PUT {{baseUrl}}/profile/{{userId}}
+Content-Type: application/json
+
+{
+  "name": "Jane T. Teacher",
+  "phone": "+254711223344"
+}
+
+### 14. Link Parent to Student (Authenticated via Cookie)
+POST {{baseUrl}}/link-parent
+Content-Type: application/json
+
+{
+  "studentId": "replace-with-student-uuid",
+  "parentId": "replace-with-parent-uuid"
+}
+
+### 15. List School Users (Authenticated via Cookie)
+GET {{baseUrl}}/schools/{{schoolId}}/users?role=teacher
+
+### 16. Toggle User Status (Activate/Deactivate - Authenticated via Cookie)
+PATCH {{baseUrl}}/users/{{userId}}/status
+Content-Type: application/json
+
+{
+  "isActive": false
+}

@@ -1,0 +1,55 @@
+@baseUrl = http://localhost:5000/api/teacher-subjects
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@parentOrStudentToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU3OGEzMjUwLTVhZjQtNGExMS04YzFiLTYzNGExZGFjZjhkYiIsImVtYWlsIjoicGFyZW50QGdtYWlsLmNvbSIsInJvbGUiOiJwYXJlbnQiLCJzY2hvb2xJZCI6IjkxOGEyN2YzLTIzMjEtNGY2OS1hMTVjLTljNjFmOWY0ZjgxOCIsImlhdCI6MTc4ODQ2NTQxNCwiZXhwIjoxNzg5MDcwMjE0fQ.t4mjrNVFC3K0gtoZsd-QCMaddG62UgCXsrtsdxyLJ-c
+@teacherId = 90850ca5-9ed5-486c-a925-4108228c4904
+@subjectId = 2fd7c6ff-142e-449c-b7ad-aa5cc78edf72
+
+### 1. Assign Single Teacher to Subject (School Admin)
+POST {{baseUrl}}
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+{
+  "teacherId": "{{teacherId}}",
+  "subjectId": "{{subjectId}}"
+}
+
+### 2. Bulk Assign Subjects to Teacher (School Admin)
+POST {{baseUrl}}/bulk
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+{
+  "teacherId": "{{teacherId}}",
+  "subjectIds": [
+    "123e4567-e89b-12d3-a456-426614174001",
+    "123e4567-e89b-12d3-a456-426614174002"
+  ]
+}
+
+### 3. Sync/Replace All Subject Assignments for Teacher (School Admin)
+PUT {{baseUrl}}/sync
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+{
+  "teacherId": "{{teacherId}}",
+  "subjectIds": [
+    "123e4567-e89b-12d3-a456-426614174001"
+  ]
+}
+
+### 4. Get All Subjects Assigned to a Teacher (Authenticated)
+GET {{baseUrl}}/teacher/{{teacherId}}
+Content-Type: application/json
+Authorization: Bearer {{parentOrStudentToken}}
+
+### 5. Get All Teachers Assigned to a Subject (Authenticated)
+GET {{baseUrl}}/subject/{{subjectId}}
+Content-Type: application/json
+Authorization: Bearer {{parentOrStudentToken}}
+
+### 6. Remove Teacher from Subject Assignment (School Admin)
+DELETE {{baseUrl}}/teacher/{{teacherId}}/subject/{{subjectId}}
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}

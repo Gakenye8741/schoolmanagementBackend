@@ -1,0 +1,35 @@
+@baseUrl = http://localhost:5000/api/auth
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
+
+### 1. Register Second Teacher (John Teacher)
+POST {{baseUrl}}/register/member
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "John Teacher",
+  "email": "john.teacher@school.edu",
+  "phone": "+254712345679",
+  "nationalId": "12345679",
+  "tscNumber": "TSC123457",
+  "role": "teacher",
+  "password": "securepassword123"
+}
+
+### 2. Register Third Teacher (Mary Teacher)
+POST {{baseUrl}}/register/member
+Content-Type: application/json
+Authorization: Bearer {{schoolAdminToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Mary Teacher",
+  "email": "mary.teacher@school.edu",
+  "phone": "+254712345680",
+  "nationalId": "12345680",
+  "tscNumber": "TSC123458",
+  "role": "teacher",
+  "password": "securepassword123"
+}

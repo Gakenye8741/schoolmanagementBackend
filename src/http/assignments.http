@@ -1,0 +1,82 @@
+@homeworkUrl = http://localhost:5000/api/homework
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@teacherId = 90850ca5-9ed5-486c-a925-4108228c4904
+@classId = c021309a-4acb-43a8-b327-687d92c76922
+@subjectId = aa47c717-0dd1-4ee6-b0f5-e8e7448f552f
+@studentId = 9d935960-9b1a-4748-9cb4-fb1f8c53eb20
+@assignmentId = 82a07866-2d04-4d2f-81ee-110702e85a09
+@submissionId = 8dfce06d-74cc-4bed-8cc6-3adaeea6b701
+
+### 1. Create Homework Assignment
+POST {{homeworkUrl}}/assignments
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "teacherId": "{{teacherId}}",
+  "title": "Algebra Practice Exercise",
+  "description": "Complete questions 1 to 10 on page 45.",
+  "dueDate": "2026-03-20T17:00:00Z"
+}
+
+### 2. Get Homework Assignments by Class
+GET {{homeworkUrl}}/assignments/class/{{classId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 3. Get Homework Assignments by Teacher
+GET {{homeworkUrl}}/assignments/teacher/{{teacherId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 4. Get Homework Assignment by ID
+GET {{homeworkUrl}}/assignments/{{assignmentId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 5. Update Homework Assignment
+PATCH {{homeworkUrl}}/assignments/{{assignmentId}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "title": "Advanced Algebra Practice Exercise",
+  "description": "Complete questions 1 to 15 on page 45 and 46."
+}
+
+### 6. Submit or Update Student Homework (Upsert)
+POST {{homeworkUrl}}/submissions
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "assignmentId": "{{assignmentId}}",
+  "studentId": "{{studentId}}",
+  "submissionText": "Completed and uploaded via student portal PDF.",
+  "status": "Submitted",
+  "submittedAt": "2026-03-18T14:30:00Z"
+}
+
+### 7. Get Homework Submission by ID
+GET {{homeworkUrl}}/submissions/{{submissionId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 8. Get All Student Homework Submissions
+GET {{homeworkUrl}}/submissions/student/{{studentId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 9. Grade Student Homework Submission
+PATCH {{homeworkUrl}}/submissions/{{submissionId}}/grade
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "gradeScore": 95.5
+}
+
+### 10. Delete Homework Assignment
+DELETE {{homeworkUrl}}/assignments/{{assignmentId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 11. Delete Homework Submission
+DELETE {{homeworkUrl}}/submissions/{{submissionId}}
+Authorization: Bearer {{schoolAdminToken}}

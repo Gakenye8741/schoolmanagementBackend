@@ -1,0 +1,1 @@
+ALTER TYPE "public"."curriculum_type" ADD VALUE 'British' BEFORE 'Other';

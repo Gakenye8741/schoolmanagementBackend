@@ -1,0 +1,79 @@
+@attendanceUrl = http://localhost:5000/api/attendance
+@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@teacherId = 90850ca5-9ed5-486c-a925-4108228c4904
+@studentId = 9d935960-9b1a-4748-9cb4-fb1f8c53eb20
+@attendanceRecordId = 739b9c40-3f41-4648-a59e-d2d8f53ee3ed
+@disciplinaryRecordId = 67491f12-3d7f-49d1-8b51-7f32425b958b
+
+### 1. Create Single Student Attendance
+POST {{attendanceUrl}}/attendance
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "studentId": "{{studentId}}",
+  "date": "2026-03-01",
+  "status": "Present",
+  "markedBy": "{{teacherId}}"
+}
+
+### 2. Bulk Create or Update Class Attendance
+POST {{attendanceUrl}}/attendance/bulk
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+[
+  {
+    "studentId": "{{studentId}}",
+    "date": "2026-03-01",
+    "status": "Present",
+    "markedBy": "{{teacherId}}"
+  }
+]
+
+### 3. Get Attendance Record by ID
+GET {{attendanceUrl}}/attendance/{{attendanceRecordId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 4. Get Student Attendance History
+GET {{attendanceUrl}}/attendance/student/{{studentId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 5. Delete Attendance Record
+DELETE {{attendanceUrl}}/attendance/{{attendanceRecordId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 6. Create Disciplinary Record
+POST {{attendanceUrl}}/discipline
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "studentId": "{{studentId}}",
+  "recordedBy": "{{teacherId}}",
+  "incidentType": "Warning",
+  "description": "Late arrival for morning assembly.",
+  "actionTaken": "Counseled by class teacher.",
+  "date": "2026-03-01T08:15:00Z"
+}
+
+### 7. Get Disciplinary Record by ID
+GET {{attendanceUrl}}/discipline/{{disciplinaryRecordId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 8. Get All Student Disciplinary Records
+GET {{attendanceUrl}}/discipline/student/{{studentId}}
+Authorization: Bearer {{schoolAdminToken}}
+
+### 9. Update Disciplinary Record
+PATCH {{attendanceUrl}}/discipline/{{disciplinaryRecordId}}
+Authorization: Bearer {{schoolAdminToken}}
+Content-Type: application/json
+
+{
+  "actionTaken": "Follow-up meeting held with parent and student."
+}
+
+### 10. Delete Disciplinary Record
+DELETE {{attendanceUrl}}/discipline/{{disciplinaryRecordId}}
+Authorization: Bearer {{schoolAdminToken}}
