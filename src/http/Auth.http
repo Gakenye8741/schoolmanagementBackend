@@ -2,7 +2,8 @@
 # ### SCHOOL MANAGEMENT SYSTEM - AUTH API TESTS (COOKIE-BASED AUTH)
 # ### ==========================================
 
-@baseUrl = http://localhost:5000/api/auth
+# @baseUrl = http://localhost:5000/api/auth
+@baseUrl = https://school-api.gakenye-ndiritu.co.ke/api/auth
 @schoolId = 123c89a4-87cd-4395-a902-64f5cb260380
 @userId = replace-with-user-uuid
 @resetToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjM5NTg2OWVjLWQ1YmItNGZhNS1iNjJkLWEwZmIxZjhiNzU2MyIsImVtYWlsIjoicHJpbmNpcGFsMUBzY2hvb2wuZWR1Iiwicm9sZSI6InNjaG9vbF9hZG1pbiIsInNjaG9vbElkIjoiMTIzYzg5YTQtODdjZC00Mzk1LWE5MDItNjRmNWNiMjYwMzgwIiwiaWF0IjoxNzg5MDMxNDgzLCJleHAiOjE3ODk2MzYyODN9.O5ucDdponBKzHzHXwj_Fziao4LXjWOT4alEWzTofCr0

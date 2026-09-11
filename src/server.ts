@@ -44,7 +44,7 @@ app.use(cors({
   origin: [
     "http://localhost:5173",
     "http://localhost:4173",
-    "https://ticketstream-events.netlify.app"
+    "https://schools.gakenye-ndiritu.co.ke/"
   ],
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
