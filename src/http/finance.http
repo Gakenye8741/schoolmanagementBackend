@@ -1,120 +1,587 @@
-@financeUrl = http://localhost:5000/api/finance
-@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
-@parentOrStudentToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU3OGEzMjUwLTVhZjQtNGExMS04YzFiLTYzNGExZGFjZjhkYiIsImVtYWlsIjoicGFyZW50QGdtYWlsLmNvbSIsInJvbGUiOiJwYXJlbnQiLCJzY2hvb2xJZCI6IjkxOGEyN2YzLTIzMjEtNGY2OS1hMTVjLTljNjFmOWY0ZjgxOCIsImlhdCI6MTc4ODQ2NTQxNCwiZXhwIjoxNzg5MDcwMjE0fQ.t4mjrNVFC3K0gtoZsd-QCMaddG62UgCXsrtsdxyLJ-c
+@baseUrl = http://localhost:5000/api
+@feesUrl = {{baseUrl}}/fees
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+@gradeLevelId = 0e6d6466-9e53-45f5-83bb-b5c19afa973e
+@studentId = 238eb983-1d32-46b3-98e8-737741356055
+@studentId2 = 00000000-0000-0000-0000-000000000002
 
-@bursarToken =  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImU4N2VhYzBiLWU5YTMtNGQ3Ny05MzUxLTEyYTFhZmUzZTA4MSIsImVtYWlsIjoiYnVyc2FyQHNjaG9vbC5lZHUiLCJyb2xlIjoiYnVyc2FyIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg2MjQ0NTEsImV4cCI6MTc4OTIyOTI1MX0.NKYibBMaHqASRJGHMHWBnqUlgK13eEHxWhPgqTfJJkc
-@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
-@registeredStudentId = 9d935960-9b1a-4748-9cb4-fb1f8c53eb20
-@termId = 43530ca6-bd8f-4cf1-b45e-288ce29750d0
+### Note: With cookie-based authentication, ensure your HTTP client (like VS Code REST Client)
+### automatically manages and sends cookies received from login responses (e.g., via a cookie jar).
 
-### Variable placeholder for created IDs during testing
-@feeItemId = f880fcca-67be-4533-8512-7dbac5021c13
-@structureId = 12723716-30da-46cc-85c0-b8d1a14e55c3
-@transactionId = 45851036-5657-41a2-897f-3b02fe9911aa
+# ================================================================
+# SETUP
+# ================================================================
 
-### 1. Create Fee Item (e.g. Tuition Fee)
-POST {{financeUrl}}/items
-Authorization: Bearer {{schoolAdminToken}}
+### 0.1 Login as admin (prerequisite for every protected request)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+### 0.2 Confirm the current term (fetch all terms)
+GET {{baseUrl}}/terms/school/{{schoolId}}
+
+### 0.3 Confirm the current term is set
+GET {{baseUrl}}/terms/school/{{schoolId}}/current
+
+
+# ================================================================
+# 1. FEE ITEMS
+# ================================================================
+
+### 1.1 Create "Tuition" fee item
+# @name createTuition
+POST {{feesUrl}}/fee-items
 Content-Type: application/json
 
 {
   "schoolId": "{{schoolId}}",
-  "name": "Tuition Fee",
-  "description": "Standard term tuition fee coverage",
+  "name": "Tuition",
+  "description": "Term tuition fee",
   "isOptional": false
 }
 
-### 2. Get All Fee Items by School
-GET {{financeUrl}}/items/school/{{schoolId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 3. Get Fee Item by ID
-GET {{financeUrl}}/items/{{feeItemId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 4. Update Fee Item
-PUT {{financeUrl}}/items/{{feeItemId}}
-Authorization: Bearer {{schoolAdminToken}}
-Content-Type: application/json
-
-{
-  "description": "Updated term tuition fee coverage for instruction and facilities"
-}
-
-### 5. Create Class Fee Structure (Assign amount to Grade Level for a Term)
-POST {{financeUrl}}/structures
-Authorization: Bearer {{schoolAdminToken}}
-Content-Type: application/json
-
-{
-  "termId": "{{termId}}",
-  "gradeLevel": "Grade 5",
-  "feeItemId": "{{feeItemId}}",
-  "amount": 15000
-}
-
-### 6. Get Class Fee Structures (Requires query parameters)
-GET {{financeUrl}}/structures?termId={{termId}}&gradeLevel=Grade 5
-Authorization: Bearer {{schoolAdminToken}}
-
-### 7. Update Class Fee Structure
-PUT {{financeUrl}}/structures/{{structureId}}
-Authorization: Bearer {{schoolAdminToken}}
-Content-Type: application/json
-
-{
-  "amount": 16000
-}
-
-### 8. Record Fee Transaction Payment
-POST {{financeUrl}}/transactions
-Authorization: Bearer {{bursarToken}}
+### 1.2 Create "Lunch" fee item (optional)
+# @name createLunch
+POST {{feesUrl}}/fee-items
 Content-Type: application/json
 
 {
   "schoolId": "{{schoolId}}",
-  "studentId": "{{registeredStudentId}}",
-  "amountPaid": 10000,
-  "balanceRemaining": 6000,
-  "paymentMethod": "M-Pesa",
-  "referenceCode": "QWE12345678",
-  "termId": "{{termId}}"
+  "name": "Lunch",
+  "description": "Optional lunch program",
+  "isOptional": true
 }
 
-### 9. Get School Fee Transactions
-GET {{financeUrl}}/transactions/school/{{schoolId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 10. Get Student Fee Transactions
-GET {{financeUrl}}/transactions/student/{{registeredStudentId}}
-Authorization: Bearer {{parentOrStudentToken}}
-
-### 11. Update Fee Transaction
-PUT {{financeUrl}}/transactions/{{transactionId}}
-Authorization: Bearer {{bursarToken}}
+### 1.3 Create "Boarding" fee item (optional)
+# @name createBoarding
+POST {{feesUrl}}/fee-items
 Content-Type: application/json
 
 {
-  "amountPaid": 12000,
-  "balanceRemaining": 4000
+  "schoolId": "{{schoolId}}",
+  "name": "Boarding",
+  "description": "Boarding accommodation",
+  "isOptional": true
 }
 
-### 12. Get Student Fee Statement (Requires query parameters)
-GET {{financeUrl}}/statements/student/{{registeredStudentId}}?termId={{termId}}&gradeLevel=Grade 5
-Authorization: Bearer {{parentOrStudentToken}}
+### 1.4 Create "Exam Fee" (mandatory)
+# @name createExam
+POST {{feesUrl}}/fee-items
+Content-Type: application/json
 
-### 13. Get School Term Collection Summary (Requires query parameters)
-GET {{financeUrl}}/collections/school/{{schoolId}}?termId={{termId}}
-Authorization: Bearer {{schoolAdminToken}}
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Exam Fee",
+  "description": "End-of-term examination fee",
+  "isOptional": false
+}
 
-### 14. Delete Class Fee Structure
-DELETE {{financeUrl}}/structures/{{structureId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 1.5 Bulk create remaining items
+POST {{feesUrl}}/fee-items/bulk
+Content-Type: application/json
 
-### 15. Delete Fee Item
-DELETE {{financeUrl}}/items/{{feeItemId}}
-Authorization: Bearer {{schoolAdminToken}}
+{
+  "schoolId": "{{schoolId}}",
+  "items": [
+    { "name": "Library", "description": "Library access", "isOptional": true },
+    { "name": "Transport", "description": "School bus", "isOptional": true },
+    { "name": "Laundry", "description": "Laundry service", "isOptional": true }
+  ]
+}
 
-### 16. Delete Fee Transaction
-DELETE {{financeUrl}}/transactions/{{transactionId}}
-Authorization: Bearer {{schoolAdminToken}}
+### Captured IDs
+@feeItemTuitionId = {{createTuition.response.body.$.feeItem.id}}
+@feeItemLunchId = {{createLunch.response.body.$.feeItem.id}}
+@feeItemBoardingId = {{createBoarding.response.body.$.feeItem.id}}
+@feeItemExamId = {{createExam.response.body.$.feeItem.id}}
+
+### 1.6 List all fee items
+GET {{feesUrl}}/fee-items/school/{{schoolId}}
+
+### 1.7 List mandatory fee items only
+GET {{feesUrl}}/fee-items/school/{{schoolId}}/mandatory
+
+### 1.8 List optional fee items only
+GET {{feesUrl}}/fee-items/school/{{schoolId}}/optional
+
+### 1.9 Search fee items
+GET {{feesUrl}}/fee-items/school/{{schoolId}}/search?query=Tuition
+
+### 1.10 Count fee items
+GET {{feesUrl}}/fee-items/school/{{schoolId}}/count
+
+### 1.11 Get "Tuition" by ID
+GET {{feesUrl}}/fee-items/{{feeItemTuitionId}}
+
+### 1.12 Update "Tuition"
+PUT {{feesUrl}}/fee-items/{{feeItemTuitionId}}
+Content-Type: application/json
+
+{
+  "description": "Term tuition fee (2026)"
+}
+
+
+# ================================================================
+# 2. FEE STRUCTURES — school-wide Day fees
+# ================================================================
+
+### 2.1 Bulk upsert Day fees (school-wide, no grade/class)
+# @name bulkUpsertDay
+POST {{feesUrl}}/fee-structures/bulk-upsert
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "boardingStatus": "Day",
+  "gradeLevelId": null,
+  "classId": null,
+  "items": [
+    { "feeItemId": "{{feeItemTuitionId}}", "amount": "20000.00" },
+    { "feeItemId": "{{feeItemExamId}}", "amount": "1500.00" }
+  ]
+}
+
+### 2.2 Bulk upsert Boarding fees (school-wide)
+# @name bulkUpsertBoarding
+POST {{feesUrl}}/fee-structures/bulk-upsert
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "boardingStatus": "Boarding",
+  "gradeLevelId": null,
+  "classId": null,
+  "items": [
+    { "feeItemId": "{{feeItemTuitionId}}", "amount": "20000.00" },
+    { "feeItemId": "{{feeItemExamId}}", "amount": "1500.00" },
+    { "feeItemId": "{{feeItemBoardingId}}", "amount": "30000.00" }
+  ]
+}
+
+### 2.3 Override: Day fees for Grade 10 (+ higher tuition)
+POST {{feesUrl}}/fee-structures/bulk-upsert
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "boardingStatus": "Day",
+  "gradeLevelId": "{{gradeLevelId}}",
+  "classId": null,
+  "items": [
+    { "feeItemId": "{{feeItemTuitionId}}", "amount": "25000.00" },
+    { "feeItemId": "{{feeItemExamId}}", "amount": "3000.00" }
+  ]
+}
+
+### 2.4 Create a single fee structure entry
+# @name createSingleFee
+POST {{feesUrl}}/fee-structures
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "feeItemId": "{{feeItemLunchId}}",
+  "boardingStatus": "Day",
+  "gradeLevelId": null,
+  "classId": null,
+  "amount": "3000.00"
+}
+
+### 2.5 List all fee structures for this term
+GET {{feesUrl}}/fee-structures/school/{{schoolId}}/term/{{termId}}
+
+### 2.6 List Day fee structures only
+GET {{feesUrl}}/fee-structures/school/{{schoolId}}/term/{{termId}}/by-boarding?boardingStatus=Day
+
+### 2.7 List Boarding fee structures only
+GET {{feesUrl}}/fee-structures/school/{{schoolId}}/term/{{termId}}/by-boarding?boardingStatus=Boarding
+
+### 2.8 Resolve fees for a specific grade (Day)
+GET {{feesUrl}}/fee-structures/school/{{schoolId}}/term/{{termId}}/by-grade?gradeLevelId={{gradeLevelId}}&boardingStatus=Day
+
+### 2.9 Resolve fees for a specific class (Day)
+GET {{feesUrl}}/fee-structures/school/{{schoolId}}/term/{{termId}}/resolve-class?classId={{classId}}&boardingStatus=Day
+
+### 2.10 Get total fee for a class
+GET {{feesUrl}}/fee-structures/school/{{schoolId}}/term/{{termId}}/class-total?classId={{classId}}&boardingStatus=Day
+
+### 2.11 Validate fee structure completeness
+GET {{feesUrl}}/fee-structures/school/{{schoolId}}/term/{{termId}}/validate
+
+### 2.12 Get fee structure by ID
+GET {{feesUrl}}/fee-structures/{{createSingleFee.response.body.$.feeStructure.id}}
+
+### 2.13 Update fee structure amount
+PUT {{feesUrl}}/fee-structures/{{createSingleFee.response.body.$.feeStructure.id}}
+Content-Type: application/json
+
+{
+  "amount": "3200.00"
+}
+
+### 2.14 Delete fee structure
+DELETE {{feesUrl}}/fee-structures/{{createSingleFee.response.body.$.feeStructure.id}}
+
+
+# ================================================================
+# 3. INVOICES
+# ================================================================
+
+### 3.1 Generate invoice for ONE student
+# @name genStudentInvoice
+POST {{feesUrl}}/invoices/generate/student
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}",
+  "dueDate": "2026-02-28",
+  "notes": "Term 1 fees"
+}
+
+### 3.2 Generate invoices for a WHOLE CLASS
+POST {{feesUrl}}/invoices/generate/class
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "termId": "{{termId}}",
+  "dueDate": "2026-02-28"
+}
+
+### 3.3 Generate invoices for a GRADE LEVEL
+POST {{feesUrl}}/invoices/generate/grade-level
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "gradeLevelId": "{{gradeLevelId}}",
+  "termId": "{{termId}}",
+  "dueDate": "2026-02-28"
+}
+
+### 3.4 Generate invoices for the WHOLE SCHOOL
+POST {{feesUrl}}/invoices/generate/school
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "dueDate": "2026-02-28"
+}
+
+### 3.5 List invoices for a term
+GET {{feesUrl}}/invoices/school/{{schoolId}}/term/{{termId}}
+
+### 3.6 List invoices for a specific student
+GET {{feesUrl}}/invoices/school/{{schoolId}}/student/{{studentId}}
+
+### 3.7 List invoices by status
+GET {{feesUrl}}/invoices/school/{{schoolId}}/status?status=Unpaid&termId={{termId}}
+
+### 3.8 Get invoice by ID
+GET {{feesUrl}}/invoices/596911b7-103f-4b9a-aa66-2d1c425d9cbc
+
+### 3.9 Apply a discount to an invoice
+PATCH {{feesUrl}}/invoices/596911b7-103f-4b9a-aa66-2d1c425d9cbc/discount
+Content-Type: application/json
+
+{
+  "discount": "500.00"
+}
+
+### 3.10 Update invoice status (manual)
+PATCH {{feesUrl}}/invoices/596911b7-103f-4b9a-aa66-2d1c425d9cbc/status
+Content-Type: application/json
+
+{
+  "status": "Partial"
+}
+
+### 3.11 Mark overdue invoices
+POST {{feesUrl}}/invoices/mark-overdue/{{schoolId}}
+
+
+# ================================================================
+# 4. PAYMENTS
+# ================================================================
+
+### 4.1 Record a cash payment (auto-applies to open invoices FIFO)
+# @name recordPayment
+POST {{feesUrl}}/payments/record
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}",
+  "invoiceId": null,
+  "amountPaid": "10000.00",
+  "paymentMethod": "Cash",
+  "referenceCode": "CASH-2026-0001",
+  "payerName": "John Doe",
+  "payerPhone": "+254700000001",
+  "notes": "Partial payment"
+}
+
+### 4.2 Record a bank payment tied to a specific invoice
+POST {{feesUrl}}/payments/record
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}",
+  "invoiceId": "596911b7-103f-4b9a-aa66-2d1c425d9cbc",
+  "amountPaid": "5000.00",
+  "paymentMethod": "Bank",
+  "referenceCode": "BANK-2026-0002",
+  "payerName": "John Doe"
+}
+
+### 4.3 Record an M-Pesa payment
+POST {{feesUrl}}/payments/record
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}",
+  "amountPaid": "8500.00",
+  "paymentMethod": "M-Pesa",
+  "referenceCode": "QKJ4X7Y2Z1",
+  "mpesaCheckoutRequestId": "ws_CO_04112026120000001",
+  "payerPhone": "+254712345678"
+}
+
+### 4.4 List transactions for a student
+GET {{feesUrl}}/payments/school/{{schoolId}}/student/{{studentId}}
+
+### 4.5 List transactions for a term
+GET {{feesUrl}}/payments/school/{{schoolId}}/term/{{termId}}
+
+### 4.6 List transactions for an invoice
+GET {{feesUrl}}/payments/invoice/596911b7-103f-4b9a-aa66-2d1c425d9cbc
+
+### 4.7 List transactions by method (Cash)
+GET {{feesUrl}}/payments/school/{{schoolId}}/by-method?method=Cash
+
+### 4.8 Get transaction by ID
+GET {{feesUrl}}/payments/{{recordPayment.response.body.$.transaction.id}}
+
+### 4.9 Reverse a payment
+POST {{feesUrl}}/payments/{{recordPayment.response.body.$.transaction.id}}/reverse
+Content-Type: application/json
+
+{
+  "reason": "Duplicate payment recorded by mistake"
+}
+
+### 4.10 Student balance for a term
+GET {{feesUrl}}/students/{{studentId}}/balance?schoolId={{schoolId}}&termId={{termId}}
+
+### 4.11 Student statement (all terms)
+GET {{feesUrl}}/students/{{studentId}}/statement?schoolId={{schoolId}}
+
+### 4.12 List M-Pesa pending payments
+GET {{feesUrl}}/payments/school/{{schoolId}}/mpesa-pending
+
+### 4.13 Find payment by M-Pesa checkout ID
+GET {{feesUrl}}/payments/school/{{schoolId}}/mpesa-lookup?checkoutRequestId=ws_CO_04112026120000001
+
+
+# ================================================================
+# 5. REPORTS & ANALYTICS
+# ================================================================
+
+### 5.1 Term financial summary
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/summary
+
+### 5.2 Collections by payment method
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/by-method
+
+### 5.3 Collections by boarding status
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/by-boarding
+
+### 5.4 Collections by grade
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/by-grade
+
+### 5.5 Aging report
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/aging
+
+### 5.6 Expected vs collected
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/expected-vs-collected
+
+### 5.7 Defaulters list (balance >= 1)
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/defaulters
+
+### 5.8 Defaulters list (balance >= 5000)
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/defaulters?minBalance=5000
+
+### 5.9 Cleared students
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/cleared
+
+### 5.10 Daily collections for a specific date
+GET {{feesUrl}}/reports/school/{{schoolId}}/daily?date=2026-02-15
+
+### 5.11 Collection trend (last 30 days)
+GET {{feesUrl}}/reports/school/{{schoolId}}/trend?days=30
+
+### 5.12 Recompute invoice statuses (fix-up job)
+POST {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/recompute-invoices
+
+### 5.13 Full fee dashboard
+GET {{feesUrl}}/reports/school/{{schoolId}}/term/{{termId}}/dashboard
+
+
+# ================================================================
+# 6. NEGATIVE / VALIDATION TESTS
+# ================================================================
+
+### 6.1 Create fee item with empty name — expect 400
+POST {{feesUrl}}/fee-items
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": ""
+}
+
+### 6.2 Create fee item with invalid school ID — expect 400
+POST {{feesUrl}}/fee-items
+Content-Type: application/json
+
+{
+  "schoolId": "not-a-uuid",
+  "name": "Test"
+}
+
+### 6.3 Create fee structure with negative amount — expect 400
+POST {{feesUrl}}/fee-structures
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "feeItemId": "{{feeItemTuitionId}}",
+  "boardingStatus": "Day",
+  "amount": "-100.00"
+}
+
+### 6.4 Create fee structure with invalid boarding status — expect 400
+POST {{feesUrl}}/fee-structures
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "feeItemId": "{{feeItemTuitionId}}",
+  "boardingStatus": "Evening",
+  "amount": "1000.00"
+}
+
+### 6.5 Copy fee structure to same term — expect 400
+POST {{feesUrl}}/fee-structures/copy
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "fromTermId": "{{termId}}",
+  "toTermId": "{{termId}}"
+}
+
+### 6.6 Generate invoice for a student twice — expect 400 (already exists)
+POST {{feesUrl}}/invoices/generate/student
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}"
+}
+
+### 6.7 Record payment with zero amount — expect 400
+POST {{feesUrl}}/payments/record
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}",
+  "amountPaid": "0.00",
+  "paymentMethod": "Cash",
+  "referenceCode": "ZERO-001"
+}
+
+### 6.8 Record payment with duplicate reference code — expect 400
+POST {{feesUrl}}/payments/record
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}",
+  "amountPaid": "1000.00",
+  "paymentMethod": "Cash",
+  "referenceCode": "CASH-2026-0001"
+}
+
+### 6.9 Delete fee item that's in use — expect 400 (referenced)
+DELETE {{feesUrl}}/fee-items/{{feeItemTuitionId}}
+
+### 6.10 Delete invoice with payments — expect 400
+DELETE {{feesUrl}}/invoices/596911b7-103f-4b9a-aa66-2d1c425d9cbc
+
+### 6.11 Waive invoice without reason — expect 400
+POST {{feesUrl}}/invoices/596911b7-103f-4b9a-aa66-2d1c425d9cbc/waive
+Content-Type: application/json
+
+{
+  "reason": ""
+}
+
+### 6.12 Reverse a non-completed transaction — expect 400
+POST {{feesUrl}}/payments/{{recordPayment.response.body.$.transaction.id}}/reverse
+Content-Type: application/json
+
+{
+  "reason": "Second reversal attempt"
+}
+
+### 6.13 Record M-Pesa payment without reference — expect 400
+POST {{feesUrl}}/payments/record
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}",
+  "amountPaid": "1000.00",
+  "paymentMethod": "M-Pesa",
+  "referenceCode": ""
+}
+
+### 6.14 No auth — expect 401
+### (Clear the cookie jar in VS Code REST Client or comment out the login)
+POST {{feesUrl}}/fee-items
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "No Auth Test"
+}

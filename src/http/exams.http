@@ -1,110 +1,552 @@
-@examsUrl = http://localhost:5000/api/exams
-@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
+@baseUrl = http://localhost:5000/api
+@examsUrl = {{baseUrl}}/exams
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+@subjectId = 59027619-15f8-411b-9646-cbbd2fac02bb
+@subjectId2 = 00000000-0000-0000-0000-000000000002
+@studentId = 7b004352-5dc1-438a-933b-21be82c43ab8
+@studentId2 = 00000000-0000-0000-0000-000000000002
+@studentId3 = 00000000-0000-0000-0000-000000000003
+@gradingScaleId = 79f3e4cc-1f7f-43e4-933d-486ec2e31e31
 
-### Variable placeholders for testing references
-@termId = 43530ca6-bd8f-4cf1-b45e-288ce29750d0
-@examId = 0abc3db2-956e-4918-b9df-1fbfa9467962
-@assessmentId = d7afdd1f-c63b-4e01-a42e-92aa06b1ed29
-@studentId = d3aadd77-7f9f-2bc6-994b-4ff7fb160d44
-@subjectId = aa47c717-0dd1-4ee6-b0f5-e8e7448f552f
-@teacherId = a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+### Note: cookie auth — login first via /api/auth/login
 
-### 1. Create a Term Exam Record
-POST {{examsUrl}}/term-exams
-Authorization: Bearer {{schoolAdminToken}}
+# ================================================================
+# SETUP
+# ================================================================
+
+### 0.1 Login as admin
+# @name login
+POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+### 0.2 Verify current term
+GET {{baseUrl}}/terms/school/{{schoolId}}/current
+
+### 0.3 Verify grading scale exists
+GET {{baseUrl}}/grading-scales/scales/{{gradingScaleId}}
+
+### 0.4 Verify students in class
+GET {{baseUrl}}/students/class/{{classId}}
+
+
+# ================================================================
+# 1. EXAMS
+# ================================================================
+
+### 1.1 Create a Mid-Term exam
+# @name createMidTerm
+POST {{examsUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
   "termId": "{{termId}}",
-  "examTitle": "Term 1 Mid-Term Assessment",
+  "examTitle": "Mid-Term Exam 2026",
   "examCategory": "Mid-Term",
-  "startDate": "2026-03-10",
-  "endDate": "2026-03-14",
-  "isLocked": false
+  "weighting": "30.00",
+  "gradingScaleId": "{{gradingScaleId}}",
+  "startDate": "2026-02-16",
+  "endDate": "2026-02-20"
 }
 
-### 2. Get Term Exams by Term ID
-GET {{examsUrl}}/term-exams/term/{{termId}}
-Authorization: Bearer {{schoolAdminToken}}
+### Captured
+@examId = {{createMidTerm.response.body.$.exam.id}}
 
-### 3. Get Term Exam by ID
-GET {{examsUrl}}/term-exams/{{examId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 4. Update Term Exam Details
-PUT {{examsUrl}}/term-exams/{{examId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 1.2 Create an End-Term exam
+# @name createEndTerm
+POST {{examsUrl}}
 Content-Type: application/json
 
 {
-  "examTitle": "Term 1 Mid-Term Assessment (Updated)",
-  "isLocked": false
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "examTitle": "End-Term Exam 2026",
+  "examCategory": "End-Term",
+  "weighting": "70.00",
+  "gradingScaleId": "{{gradingScaleId}}",
+  "startDate": "2026-04-06",
+  "endDate": "2026-04-10"
 }
 
-### 5. Create a Single CBC Assessment Score
-POST {{examsUrl}}/assessments
-Authorization: Bearer {{schoolAdminToken}}
+### 1.3 Create a CAT (uses default grading scale)
+POST {{examsUrl}}
 Content-Type: application/json
 
 {
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "examTitle": "CAT 1 - February",
+  "examCategory": "Continuous Assessment"
+}
+
+### 1.4 List exams for this term
+GET {{examsUrl}}/school/{{schoolId}}/term/{{termId}}
+
+### 1.5 List exams for this school
+GET {{examsUrl}}/school/{{schoolId}}
+
+### 1.6 List exams by category (Mid-Term)
+GET {{examsUrl}}/school/{{schoolId}}/by-category?category=Mid-Term
+
+### 1.7 Get exam by ID
+GET {{examsUrl}}/{{examId}}
+
+### 1.8 Update exam title
+PUT {{examsUrl}}/{{examId}}
+Content-Type: application/json
+
+{
+  "examTitle": "Mid-Term Exam 2026 (Revised)"
+}
+
+### 1.9 Get exam statistics (before any marks)
+GET {{examsUrl}}/{{examId}}/statistics
+
+
+# ================================================================
+# 2. SCHEDULES
+# ================================================================
+
+### 2.1 Create a single schedule entry
+# @name createSchedule
+POST {{examsUrl}}/schedules
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "examDate": "2026-02-16",
+  "startTime": "09:00",
+  "endTime": "11:00",
+  "venue": "Main Hall",
+  "invigilatorId": null
+}
+
+### 2.2 Bulk create schedules (whole exam timetable)
+POST {{examsUrl}}/schedules/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "schedules": [
+    {
+      "classId": "{{classId}}",
+      "subjectId": "{{subjectId}}",
+      "examDate": "2026-02-16",
+      "startTime": "09:00",
+      "endTime": "11:00",
+      "venue": "Main Hall"
+    },
+    {
+      "classId": "{{classId}}",
+      "subjectId": "{{subjectId2}}",
+      "examDate": "2026-02-17",
+      "startTime": "09:00",
+      "endTime": "11:00",
+      "venue": "Main Hall"
+    }
+  ]
+}
+
+### 2.3 List schedules for the exam
+GET {{examsUrl}}/{{examId}}/schedules
+
+### 2.4 List schedules for a class
+GET {{examsUrl}}/school/{{schoolId}}/class/{{classId}}/schedules
+
+### 2.5 List schedules by date
+GET {{examsUrl}}/school/{{schoolId}}/schedules/by-date?examDate=2026-02-16
+
+### 2.6 Get schedule by ID
+GET {{examsUrl}}/schedules/{{createSchedule.response.body.$.schedule.id}}
+
+### 2.7 Update schedule venue
+PUT {{examsUrl}}/schedules/{{createSchedule.response.body.$.schedule.id}}
+Content-Type: application/json
+
+{
+  "venue": "Science Lab",
+  "startTime": "08:30",
+  "endTime": "10:30"
+}
+
+### 2.8 Delete a schedule
+DELETE {{examsUrl}}/schedules/{{createSchedule.response.body.$.schedule.id}}
+
+
+# ================================================================
+# 3. ENTER MARKS — single
+# ================================================================
+
+### 3.1 Enter a mark for one student (top of scale)
+# @name enterMark1
+POST {{examsUrl}}/marks
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
   "studentId": "{{studentId}}",
   "subjectId": "{{subjectId}}",
-  "termId": "{{termId}}",
-  "examId": "{{examId}}",
-  "strand": "Numbers",
-  "subStrand": "Whole Numbers",
-  "scoreValue": 18.00,
-  "outOf": 20.00,
-  "performanceLevel": "EE",
-  "teacherRemarks": "Shows exceptional analytical and mathematical skills.",
-  "assessedBy": "{{teacherId}}"
+  "classId": "{{classId}}",
+  "marks": "85.00",
+  "outOf": "100.00",
+  "isAbsent": false,
+  "remarks": "Excellent work"
 }
 
-### 6. Bulk Create/Update CBC Assessments (Class Marksheet)
-POST {{examsUrl}}/assessments/bulk
-Authorization: Bearer {{schoolAdminToken}}
+### 3.2 Enter a mark for student 2 (mid-scale)
+POST {{examsUrl}}/marks
 Content-Type: application/json
 
-[
-  {
-    "studentId": "{{studentId}}",
-    "subjectId": "{{subjectId}}",
-    "termId": "{{termId}}",
-    "examId": "{{examId}}",
-    "strand": "Numbers",
-    "subStrand": "Whole Numbers",
-    "scoreValue": 18.00,
-    "outOf": 20.00,
-    "performanceLevel": "EE",
-    "teacherRemarks": "Exceptional work.",
-    "assessedBy": "{{teacherId}}"
-  }
-]
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "studentId": "{{studentId2}}",
+  "subjectId": "{{subjectId}}",
+  "classId": "{{classId}}",
+  "marks": "72.00",
+  "outOf": "100.00"
+}
 
-### 7. Get CBC Assessment by ID
-GET {{examsUrl}}/assessments/{{assessmentId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 3.3 Enter a mark for student 3 (low)
+POST {{examsUrl}}/marks
+Content-Type: application/json
 
-### 8. Get Student CBC Assessments
-GET {{examsUrl}}/assessments/student/{{studentId}}?termId={{termId}}&examId={{examId}}
-Authorization: Bearer {{schoolAdminToken}}
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "studentId": "{{studentId3}}",
+  "subjectId": "{{subjectId}}",
+  "classId": "{{classId}}",
+  "marks": "45.00",
+  "outOf": "100.00"
+}
 
-### 9. Get Exam Subject Performance Analytics
-GET {{examsUrl}}/assessments/analytics/exam/{{examId}}/subject/{{subjectId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 3.4 Re-enter student 1's mark (upsert — should update)
+POST {{examsUrl}}/marks
+Content-Type: application/json
 
-### 10. Get Student Term Report Card Summary
-GET {{examsUrl}}/assessments/report-card/student/{{studentId}}/term/{{termId}}/exam/{{examId}}
-Authorization: Bearer {{schoolAdminToken}}
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "studentId": "{{studentId}}",
+  "subjectId": "{{subjectId}}",
+  "classId": "{{classId}}",
+  "marks": "88.00",
+  "outOf": "100.00",
+  "remarks": "Corrected — 88"
+}
 
-### 11. Get Exam Summary Analytics (School/Grade Breakdown)
-GET {{examsUrl}}/assessments/analytics/exam/{{examId}}/summary
-Authorization: Bearer {{schoolAdminToken}}
+### 3.5 Mark a student absent
+POST {{examsUrl}}/marks/absent
+Content-Type: application/json
 
-### 12. Delete CBC Assessment Record
-DELETE {{examsUrl}}/assessments/{{assessmentId}}
-Authorization: Bearer {{schoolAdminToken}}
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "studentId": "{{studentId3}}",
+  "subjectId": "{{subjectId2}}"
+}
 
-### 13. Delete Term Exam Record
-DELETE {{examsUrl}}/term-exams/{{examId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 3.6 Get the entered mark by ID
+GET {{examsUrl}}/marks/{{enterMark1.response.body.$.result.id}}
+
+### 3.7 Update the mark
+PUT {{examsUrl}}/marks/{{enterMark1.response.body.$.result.id}}
+Content-Type: application/json
+
+{
+  "marks": "90.00",
+  "remarks": "Corrected again — 90"
+}
+
+### 3.8 Delete a mark
+DELETE {{examsUrl}}/marks/{{enterMark1.response.body.$.result.id}}
+
+
+# ================================================================
+# 4. ENTER MARKS — bulk
+# ================================================================
+
+### 4.1 Bulk enter marks for the whole class on subject 1
+POST {{examsUrl}}/marks/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "subjectId": "{{subjectId}}",
+  "entries": [
+    { "studentId": "{{studentId}}", "classId": "{{classId}}", "marks": "92.00" },
+    { "studentId": "{{studentId2}}", "classId": "{{classId}}", "marks": "78.00" },
+    { "studentId": "{{studentId3}}", "classId": "{{classId}}", "marks": "65.00" }
+  ]
+}
+
+### 4.2 Bulk enter marks with one absent
+POST {{examsUrl}}/marks/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "subjectId": "{{subjectId2}}",
+  "entries": [
+    { "studentId": "{{studentId}}", "classId": "{{classId}}", "marks": "70.00" },
+    { "studentId": "{{studentId2}}", "classId": "{{classId}}", "marks": "68.00" },
+    { "studentId": "{{studentId3}}", "classId": "{{classId}}", "isAbsent": true }
+  ]
+}
+
+
+# ================================================================
+# 5. MARKSHEET
+# ================================================================
+
+### 5.1 Get marksheet — class + subject + exam
+GET {{examsUrl}}/{{examId}}/marksheet/{{classId}}/{{subjectId}}
+
+### 5.2 Get marksheet — second subject
+GET {{examsUrl}}/{{examId}}/marksheet/{{classId}}/{{subjectId2}}
+
+### 5.3 Get all subject marks (school-wide)
+GET {{examsUrl}}/{{examId}}/subject/{{subjectId}}/marks
+
+
+# ================================================================
+# 6. STUDENT MARKS & TRANSCRIPT
+# ================================================================
+
+### 6.1 Get all marks for student 1 on this exam
+GET {{examsUrl}}/{{examId}}/student/{{studentId}}/marks
+
+### 6.2 Get student 1's full transcript (all exams)
+GET {{examsUrl}}/student/{{studentId}}/transcript
+
+
+# ================================================================
+# 7. COMPUTATION
+# ================================================================
+
+### 7.1 Compute grades from the grading scale (fix-up job)
+POST {{examsUrl}}/{{examId}}/compute-grades
+
+### 7.2 Compute subject positions (rank within class per subject)
+POST {{examsUrl}}/{{examId}}/compute-subject-positions
+
+### 7.3 Compute class ranking (overall mean + position)
+POST {{examsUrl}}/{{examId}}/compute-class-ranking
+
+### 7.4 Compute subject statistics (mean, distribution, pass rate)
+GET {{examsUrl}}/{{examId}}/subject-statistics
+
+### 7.5 Compute class performance
+GET {{examsUrl}}/{{examId}}/class-performance
+
+
+# ================================================================
+# 8. REPORT & STATISTICS
+# ================================================================
+
+### 8.1 Exam statistics (mean, distribution, completion)
+GET {{examsUrl}}/{{examId}}/statistics
+
+### 8.2 Full exam report (summary + per subject + per class)
+GET {{examsUrl}}/{{examId}}/report
+
+
+# ================================================================
+# 9. PUBLISH & LOCK
+# ================================================================
+
+### 9.1 Publish marks (computes positions + rankings + locks exam)
+POST {{examsUrl}}/{{examId}}/publish
+
+### 9.2 Try to enter a mark on locked exam — expect 400
+POST {{examsUrl}}/marks
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "studentId": "{{studentId}}",
+  "subjectId": "{{subjectId}}",
+  "marks": "99.00"
+}
+
+### 9.3 Try to update a mark on locked exam — expect 400
+PUT {{examsUrl}}/marks/{{enterMark1.response.body.$.result.id}}
+Content-Type: application/json
+
+{
+  "marks": "100.00"
+}
+
+### 9.4 Try to delete a mark on locked exam — expect 400
+DELETE {{examsUrl}}/marks/{{enterMark1.response.body.$.result.id}}
+
+### 9.5 Try to delete a locked exam — expect 400
+DELETE {{examsUrl}}/{{examId}}
+
+### 9.6 Unlock the exam
+POST {{examsUrl}}/{{examId}}/unlock
+
+### 9.7 Now mark entry works again
+POST {{examsUrl}}/marks
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "studentId": "{{studentId}}",
+  "subjectId": "{{subjectId}}",
+  "marks": "91.00"
+}
+
+### 9.8 Re-lock for safety
+POST {{examsUrl}}/{{examId}}/lock
+
+
+# ================================================================
+# 10. NEGATIVE TESTS
+# ================================================================
+
+### 10.1 Create exam with invalid category — expect 400
+POST {{examsUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "examTitle": "Test",
+  "examCategory": "Invalid Category"
+}
+
+### 10.2 Create exam with empty title — expect 400
+POST {{examsUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "examTitle": "",
+  "examCategory": "Mid-Term"
+}
+
+### 10.3 Create exam with invalid termId — expect 400
+POST {{examsUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "not-a-uuid",
+  "examTitle": "Test",
+  "examCategory": "Mid-Term"
+}
+
+### 10.4 Create exam with endDate before startDate — expect 400
+POST {{examsUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "examTitle": "Invalid dates",
+  "examCategory": "Mid-Term",
+  "startDate": "2026-04-20",
+  "endDate": "2026-04-10"
+}
+
+### 10.5 Enter mark with marks > outOf — expect 400
+POST {{examsUrl}}/marks
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "studentId": "{{studentId}}",
+  "subjectId": "{{subjectId}}",
+  "marks": "150.00",
+  "outOf": "100.00"
+}
+
+### 10.6 Enter mark with negative marks — expect 400
+POST {{examsUrl}}/marks
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "studentId": "{{studentId}}",
+  "subjectId": "{{subjectId}}",
+  "marks": "-5.00"
+}
+
+### 10.7 Enter mark with no marks and not absent — expect 400
+POST {{examsUrl}}/marks
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "studentId": "{{studentId}}",
+  "subjectId": "{{subjectId}}",
+  "isAbsent": false
+}
+
+### 10.8 Bulk marks with duplicate students — expect 400
+POST {{examsUrl}}/marks/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "subjectId": "{{subjectId}}",
+  "entries": [
+    { "studentId": "{{studentId}}", "marks": "50.00" },
+    { "studentId": "{{studentId}}", "marks": "70.00" }
+  ]
+}
+
+### 10.9 Schedule with endTime before startTime — expect 400
+POST {{examsUrl}}/schedules
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "examId": "{{examId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "examDate": "2026-02-16",
+  "startTime": "11:00",
+  "endTime": "09:00"
+}
+
+### 10.10 Get nonexistent exam — expect 404
+GET {{examsUrl}}/00000000-0000-0000-0000-000000000099
+
+### 10.11 Get marksheet with invalid UUIDs — expect 400
+GET {{examsUrl}}/not-a-uuid/marksheet/{{classId}}/{{subjectId}}
+
+### 10.12 No auth — expect 401 (clear cookie jar first)
+POST {{examsUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "examTitle": "No Auth",
+  "examCategory": "Mid-Term"
+}

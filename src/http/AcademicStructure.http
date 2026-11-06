@@ -1,0 +1,444 @@
+@baseUrl = http://localhost:5000/api
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@gradeLevelId = 0e6d6466-9e53-45f5-83bb-b5c19afa973e
+@gradeLevel2Id = 69e9341a-7375-48b7-b201-1b9bfbd6ef9f
+@subjectId = 59027619-15f8-411b-9646-cbbd2fac02bb
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+@classId2 = 00000000-0000-0000-0000-000000000005
+@classSubjectId = 055d283e-16c2-41f0-9f4e-0d0285d5542a
+@teacherId = 5acbe2d6-4e97-4f4c-889d-67fb4d7107d2
+@studentId = 238eb983-1d32-46b3-98e8-737741356055
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+
+### Note: With cookie-based authentication, ensure your HTTP client (like VS Code REST Client)
+### automatically manages and sends cookies received from login responses (e.g., via a cookie jar).
+### Replace @placeholder UUIDs at the top with IDs captured from earlier responses.
+
+# ================================================================
+# GRADE LEVELS (1–20)
+# ================================================================
+
+### 1. Create a grade level (Admin)
+POST {{baseUrl}}/academic-structure/grade-levels
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Grade 5",
+  "sortOrder": 5,
+  "educationStage": "Upper Primary",
+  "nextGradeLevelId": null,
+  "isFinalGrade": false
+}
+
+### 2. Get grade level by ID (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/{{gradeLevelId}}
+
+### 3. Get grade level with its classes (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/{{gradeLevelId}}/with-classes
+
+### 4. List grade levels for a school (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/school/{{schoolId}}
+
+### 5. List grade levels by education stage (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/school/{{schoolId}}/by-stage?stage=Upper%20Primary
+
+### 6. Update a grade level (Admin)
+PUT {{baseUrl}}/academic-structure/grade-levels/{{gradeLevelId}}
+Content-Type: application/json
+
+{
+  "name": "Grade 5 (Revised)",
+  "educationStage": "Upper Primary"
+}
+
+### 7. Delete a grade level (Super Admin only)
+DELETE {{baseUrl}}/academic-structure/grade-levels/{{gradeLevelId}}
+
+### 8. Set the next grade level (Admin)
+PUT {{baseUrl}}/academic-structure/grade-levels/{{gradeLevelId}}/next
+Content-Type: application/json
+
+{
+  "nextGradeLevelId": "{{gradeLevel2Id}}"
+}
+
+### 9. Mark a grade level as final (Admin)
+POST {{baseUrl}}/academic-structure/grade-levels/{{gradeLevelId}}/mark-final
+
+### 10. Get the final grade level for a school (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/school/{{schoolId}}/final
+
+### 11. Get the promotion chain starting at a grade level (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/{{gradeLevelId}}/chain
+
+### 12. Get the previous grade level (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/{{gradeLevelId}}/previous
+
+### 13. Count grade levels for a school (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/school/{{schoolId}}/count
+
+### 14. Bulk create grade levels (Admin)
+POST {{baseUrl}}/academic-structure/grade-levels/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "levels": [
+    {
+      "name": "Grade 6",
+      "sortOrder": 6,
+      "educationStage": "Upper Primary",
+      "nextGradeLevelId": null,
+      "isFinalGrade": false
+    },
+    {
+      "name": "Grade 7",
+      "sortOrder": 7,
+      "educationStage": "Junior Secondary",
+      "nextGradeLevelId": null,
+      "isFinalGrade": false
+    }
+  ]
+}
+
+### 15. Reorder grade levels (Admin)
+PUT {{baseUrl}}/academic-structure/grade-levels/reorder
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "orderedIds": [
+    "{{gradeLevelId}}",
+    "{{gradeLevel2Id}}"
+  ]
+}
+
+### 16. Validate the promotion ladder (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/school/{{schoolId}}/validate-ladder
+
+### 17. Get a grade level by name (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/school/{{schoolId}}/lookup?name=Grade%205
+
+### 18. Search grade levels (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/school/{{schoolId}}/search?query=Grade
+
+### 19. Get root (entry) grade levels (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/school/{{schoolId}}/root
+
+### 20. Get the promotion summary for a school (Any authenticated user)
+GET {{baseUrl}}/academic-structure/grade-levels/school/{{schoolId}}/promotion-summary
+
+
+# ================================================================
+# SUBJECTS (21–38)
+# ================================================================
+
+### 21. Create a subject (Admin)
+POST {{baseUrl}}/academic-structure/subjects
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Mathematics",
+  "code": "MAT",
+  "category": "Core"
+}
+
+### 22. Get subject by ID (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/{{subjectId}}
+
+### 23. Get subject by code (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/school/{{schoolId}}/by-code?code=MAT
+
+### 24. List subjects for a school (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/school/{{schoolId}}
+
+### 25. List subjects by category (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/school/{{schoolId}}/by-category?category=Core
+
+### 26. Update a subject (Admin)
+PUT {{baseUrl}}/academic-structure/subjects/{{subjectId}}
+Content-Type: application/json
+
+{
+  "name": "Mathematics (Revised)",
+  "category": "Core"
+}
+
+### 27. Delete a subject (Super Admin only)
+DELETE {{baseUrl}}/academic-structure/subjects/{{subjectId}}
+
+### 28. Count subjects for a school (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/school/{{schoolId}}/count
+
+### 29. Bulk create subjects (Admin)
+POST {{baseUrl}}/academic-structure/subjects/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "subjects": [
+    {
+      "name": "English",
+      "code": "ENG",
+      "category": "Core"
+    },
+    {
+      "name": "Kiswahili",
+      "code": "KIS",
+      "category": "Core"
+    },
+    {
+      "name": "Science",
+      "code": "SCI",
+      "category": "Core"
+    }
+  ]
+}
+
+### 30. Search subjects (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/school/{{schoolId}}/search?query=Math
+
+### 31. List subjects assigned to a class (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/class/{{classId}}
+
+### 32. List subjects a teacher is qualified for (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/teacher/{{teacherId}}
+
+### 33. Duplicate a subject (Admin)
+POST {{baseUrl}}/academic-structure/subjects/{{subjectId}}/duplicate
+Content-Type: application/json
+
+{
+  "newCode": "MAT2"
+}
+
+### 34. Count classes using a subject (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/{{subjectId}}/usage-count
+
+### 35. Get subject usage summary for a school (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/school/{{schoolId}}/usage-summary
+
+### 36. Rename a subject code (Admin)
+PUT {{baseUrl}}/academic-structure/subjects/{{subjectId}}/code
+Content-Type: application/json
+
+{
+  "newCode": "MATH"
+}
+
+### 37. Verify a subject belongs to a school (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/verify?schoolId={{schoolId}}&subjectId={{subjectId}}
+
+### 38. List core subjects (Any authenticated user)
+GET {{baseUrl}}/academic-structure/subjects/school/{{schoolId}}/core
+
+
+# ================================================================
+# CLASSES (39–60)
+# ================================================================
+
+### 39. Create a class (Admin)
+POST {{baseUrl}}/academic-structure/classes
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "gradeLevelId": "{{gradeLevelId}}",
+  "stream": "East",
+  "academicYear": "2026",
+  "classTeacherId": "{{teacherId}}",
+  "capacity": 40
+}
+
+### 40. Get class by ID (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/{{classId}}
+
+### 41. Get class with relations (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/{{classId}}/with-relations
+
+### 42. List classes for a school (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/school/{{schoolId}}
+
+### 43. List classes for a specific academic year (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/school/{{schoolId}}/by-year?academicYear=2026
+
+### 44. List classes for a grade level (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/grade-level/{{gradeLevelId}}
+
+### 45. List classes for a teacher (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/teacher/{{teacherId}}
+
+### 46. Update a class (Admin)
+PUT {{baseUrl}}/academic-structure/classes/{{classId}}
+Content-Type: application/json
+
+{
+  "stream": "East A",
+  "capacity": 45
+}
+
+### 47. Delete a class (Super Admin only)
+DELETE {{baseUrl}}/academic-structure/classes/{{classId}}
+
+### 48. Assign a class teacher (Admin)
+PUT {{baseUrl}}/academic-structure/classes/{{classId}}/teacher
+Content-Type: application/json
+
+{
+  "teacherId": "{{teacherId}}"
+}
+
+### 49. Add a subject to a class (Admin)
+POST {{baseUrl}}/academic-structure/classes/{{classId}}/subjects
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "teacherId": "{{teacherId}}"
+}
+
+### 50. Remove a subject from a class (Admin)
+DELETE {{baseUrl}}/academic-structure/classes/{{classId}}/subjects/{{subjectId}}
+
+### 51. Assign a teacher to a class-subject link (Admin)
+PUT {{baseUrl}}/academic-structure/class-subjects/{{classSubjectId}}/teacher
+Content-Type: application/json
+
+{
+  "teacherId": "{{teacherId}}"
+}
+
+### 52. List students in a class (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/{{classId}}/students
+
+### 53. Count students in a class (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/{{classId}}/students/count
+
+### 54. Check class capacity (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/{{classId}}/capacity
+
+### 55. Bulk create classes (Admin)
+POST {{baseUrl}}/academic-structure/classes/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classes": [
+    {
+      "gradeLevelId": "{{gradeLevelId}}",
+      "stream": "West",
+      "academicYear": "2026",
+      "classTeacherId": null,
+      "capacity": 40
+    },
+    {
+      "gradeLevelId": "{{gradeLevel2Id}}",
+      "stream": "North",
+      "academicYear": "2026",
+      "classTeacherId": null,
+      "capacity": 40
+    }
+  ]
+}
+
+### 56. Roll classes to a new academic year (Admin)
+POST {{baseUrl}}/academic-structure/classes/roll-to-year
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "fromYear": "2026",
+  "toYear": "2027"
+}
+
+### 57. Transfer a student between classes (Admin)
+POST {{baseUrl}}/academic-structure/classes/transfer-student
+Content-Type: application/json
+
+{
+  "studentId": "{{studentId}}",
+  "toClassId": "{{classId}}"
+}
+
+### 58. Get class statistics (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/{{classId}}/statistics
+
+### 59. Search classes (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/school/{{schoolId}}/search?query=East
+
+### 60. Validate class readiness (Any authenticated user)
+GET {{baseUrl}}/academic-structure/classes/{{classId}}/readiness
+
+
+# ================================================================
+# STUDENT LINKING (61)
+# ================================================================
+
+### 61a. Link an unplaced student to a class (Admin)
+### Expect: 200 — "Student enrolled in class "East" (2026)."
+POST {{baseUrl}}/academic-structure/classes/link-student
+Content-Type: application/json
+
+{
+  "studentId": "7b004352-5dc1-438a-933b-21be82c43ab8",
+  "classId": "{{classId}}",
+  "requireUnplaced": true
+}
+
+### 61b. Re-link the same student — should fail (Admin)
+### Expect: 400 — student is already assigned to a class
+POST {{baseUrl}}/academic-structure/classes/link-student
+Content-Type: application/json
+
+{
+  "studentId": "{{studentId}}",
+  "classId": "{{classId}}",
+  "requireUnplaced": true
+}
+
+### 61c. Transfer a placed student to a different class (Admin)
+### Expect: 200 — "Student moved to class "West" (2026)."
+### Prereq: @classId2 points at a different class in the same school
+POST {{baseUrl}}/academic-structure/classes/link-student
+Content-Type: application/json
+
+{
+  "studentId": "{{studentId}}",
+  "classId": "{{classId2}}"
+}
+
+### 61d. Link student with explicit termId (Admin)
+### Expect: 200 — links into the specified term instead of the current one
+### Prereq: @termId is an existing academic term in the same school
+POST {{baseUrl}}/academic-structure/classes/link-student
+Content-Type: application/json
+
+{
+  "studentId": "{{studentId}}",
+  "classId": "{{classId}}",
+  "termId": "{{termId}}"
+}
+
+### 61e. Link student with a cross-school class ID (Admin)
+### Expect: 400 — student and class belong to different schools
+POST {{baseUrl}}/academic-structure/classes/link-student
+Content-Type: application/json
+
+{
+  "studentId": "{{studentId}}",
+  "classId": "00000000-0000-0000-0000-000000000099"
+}
+
+### 61f. Link student with an invalid (non-UUID) class ID (Admin)
+### Expect: 400 — Zod validation error on classId
+POST {{baseUrl}}/academic-structure/classes/link-student
+Content-Type: application/json
+
+{
+  "studentId": "{{studentId}}",
+  "classId": "not-a-uuid"
+}

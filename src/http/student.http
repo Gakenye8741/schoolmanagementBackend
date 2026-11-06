@@ -1,105 +1,264 @@
-@authUrl = http://localhost:5000/api/auth
-@studentUrl = http://localhost:5000/api/students
-@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImRhMDRlYjkzLTA5NGUtNDJmNi1iNzM2LTNlMDQ1ZjM0M2Q1MiIsImVtYWlsIjoiYWRtaW5AUm9zcy5jb20iLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiJiNjdhM2U2OC04ZGUxLTQ5MzgtYTcyMi04YjdlOGY1YzNjNmEiLCJpYXQiOjE3ODkwNjYxMzEsImV4cCI6MTc4OTY3MDkzMX0.g7Ms6g_JAYLP_ftI7IIoWu_Xf1XZf9CzOj2OMA5lmXU
-@parentOrStudentToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU3OGEzMjUwLTVhZjQtNGExMS04YzFiLTYzNGExZGFjZjhkYiIsImVtYWlsIjoicGFyZW50QGdtYWlsLmNvbSIsInJvbGUiOiJwYXJlbnQiLCJzY2hvb2xJZCI6IjkxOGEyN2YzLTIzMjEtNGY2OS1hMTVjLTljNjFmOWY0ZjgxOCIsImlhdCI6MTc4ODQ2NTQxNCwiZXhwIjoxNzg5MDcwMjE0fQ.t4mjrNVFC3K0gtoZsd-QCMaddG62UgCXsrtsdxyLJ-c
-@schoolId = b67a3e68-8de1-4938-a722-8b7e8f5c3c6a
-@classId = c021309a-4acb-43a8-b327-687d92c76922
-@studentId = b289a23a-465c-4f5b-94d5-17f813fd2bca
+@baseUrl = http://localhost:5000/api
+@studentsUrl = {{baseUrl}}/students
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+@class2Id = 00000000-0000-0000-0000-000000000005
+@parentUserId = 89813af8-bc98-45dd-aaeb-cd7de0eaab85
 
-@registeredStudentId = 9d935960-9b1a-4748-9cb4-fb1f8c53eb20
-@termId = 43530ca6-bd8f-4cf1-b45e-288ce29750d0
-@parentId = c5d4aa5d-52ac-4a41-a024-cf75a7676a17
+### ================================================================
+### 1. REGISTRATION
+### ================================================================
 
-### 1. Register John Student User (Auth Service)
-POST {{authUrl}}/register/member
+### 1.1 Register a student (unplaced)
+# @name regStudent
+POST {{studentsUrl}}
 Content-Type: application/json
-Cookie: token={{schoolAdminToken}}
 
 {
   "schoolId": "{{schoolId}}",
-  "name": "alex Student",
-  "email": "alex.student1@school.edu",
-  "admissionNumber": "ADM/2026/0011",
-  "role": "student",
-  "password": "securepassword123"
+  "email": "brian1.student@school.test",
+  "password": "StudentPass123",
+  "admissionNumber": "ADM-2027-002",
+  "firstName": "brian",
+  "lastName": "Student",
+  "gender": "Male",
+  "dateOfBirth": "2014-05-12"
 }
 
-### 2. Register Parent Guardian User (Auth Service)
-POST {{authUrl}}/register/member
+### 1.2 Register a student WITH a class at admission
+# @name regStudentWithClass
+POST {{studentsUrl}}
 Content-Type: application/json
-Cookie: token={{schoolAdminToken}}
 
 {
   "schoolId": "{{schoolId}}",
-  "name": "Parent Guardian",
-  "email": "parent1@gmail1.com",
-  "phone": "+254798765432",
-  "role": "parent",
-  "password": "securepassword123"
+  "email": "mary.student@school.test",
+  "password": "StudentPass123",
+  "admissionNumber": "ADM-2026-002",
+  "firstName": "Mary",
+  "lastName": "Student",
+  "gender": "Female",
+  "dateOfBirth": "2013-07-22",
+  "classId": "{{classId}}"
 }
 
-### 3. Register Student Profile linked to Class & Parent (Students Service)
-POST {{studentUrl}}
-Cookie: token={{schoolAdminToken}}
+### Captured:
+@studentId = 238eb983-1d32-46b3-98e8-737741356055
+@studentUserId = {{regStudent.response.body.$.user.id}}
+
+### ================================================================
+### 2. READS
+### ================================================================
+
+### 2.1 Get by ID
+GET {{studentsUrl}}/{{studentId}}
+
+### 2.2 Get with relations
+GET {{studentsUrl}}/{{studentId}}/with-relations
+
+### 2.3 Get by user ID
+GET {{studentsUrl}}/user/{{studentUserId}}
+
+### 2.4 Get by admission number
+GET {{studentsUrl}}/school/{{schoolId}}/admission?admissionNumber=ADM-2027-001
+
+### 2.5 List by school
+GET {{studentsUrl}}/school/{{schoolId}}
+
+### 2.6 List by class
+GET {{studentsUrl}}/class/{{classId}}
+
+### 2.7 Search
+GET {{studentsUrl}}/school/{{schoolId}}/search?query=Sam
+
+### ================================================================
+### 3. UPDATE / DELETE
+### ================================================================
+
+### 3.1 Update
+PUT {{studentsUrl}}/{{studentId}}
 Content-Type: application/json
 
 {
-  "schoolId": "{{schoolId}}",
-  "admissionNumber": "ADM/2026/0011",
-  "upiNumber": "UPI9876543210",
-  "parentId": "{{parentId}}",
+  "middleName": "Mwangi",
+  "upiNumber": "UPI-2026-0001"
+}
+
+### 3.2 Soft delete (super admin)
+DELETE {{studentsUrl}}/{{studentId}}
+
+### 3.3 Restore
+POST {{studentsUrl}}/{{studentId}}/restore
+
+### ================================================================
+### 4. LIFECYCLE
+### ================================================================
+
+### 4.1 Enroll unplaced student in a class
+POST {{studentsUrl}}/{{studentId}}/class
+Content-Type: application/json
+
+{
   "classId": "{{classId}}",
-  "dateOfBirth": "2015-06-12",
-  "gender": "Male",
-  "enrollmentDate": "2026-01-05",
-  "isEnrolled": true
+  "requireUnplaced": true
 }
 
-### 4. Link Parent to Student (Auth Service)
-POST {{authUrl}}/link-parent
-Content-Type: application/json
-Cookie: token={{schoolAdminToken}}
-
-{
-  "studentId": "{{studentId}}",
-  "parentId": "{{parentId}}"
-}
-
-### 5. Get All Students by School (Students Service)
-GET {{studentUrl}}/school/{{schoolId}}
-Cookie: token={{parentOrStudentToken}}
-
-### 6. Get Student by ID with Full Relations (Students Service)
-GET {{studentUrl}}/{{registeredStudentId}}
-Cookie: token={{parentOrStudentToken}}
-
-### 7. Update Student Details (Students Service)
-PUT {{studentUrl}}/{{registeredStudentId}}
-Cookie: token={{schoolAdminToken}}
+### 4.2 Withdraw
+POST {{studentsUrl}}/{{studentId}}/withdraw
 Content-Type: application/json
 
 {
-  "gender": "Male",
-  "isEnrolled": true
+  "reason": "Family relocated to Mombasa"
 }
 
-### 8. Create Student Enrollment History Record (Students Service)
-POST {{studentUrl}}/enrollment-history
-Cookie: token={{schoolAdminToken}}
+### 4.3 Re-enroll
+POST {{studentsUrl}}/{{studentId}}/re-enroll
+
+### 4.4 Promote
+POST {{studentsUrl}}/{{studentId}}/promote
+Content-Type: application/json
+
+{}
+
+### 4.5 Graduate (final-grade only)
+POST {{studentsUrl}}/{{studentId}}/graduate
+Content-Type: application/json
+
+{}
+
+### 4.6 Repeat grade
+POST {{studentsUrl}}/{{studentId}}/repeat
+Content-Type: application/json
+
+{}
+
+### 4.7 Transfer out
+POST {{studentsUrl}}/{{studentId}}/transfer-out
 Content-Type: application/json
 
 {
-  "studentId": "{{registeredStudentId}}",
-  "termId": "{{termId}}",
-  "gradeLevel": "Grade 5",
-  "stream": "East",
-  "status": "Active"
+  "toSchool": "Nairobi Academy",
+  "reason": "Parent posted to Nairobi"
 }
 
-### 9. Get Student Enrollment History (Students Service)
-GET {{studentUrl}}/{{registeredStudentId}}/enrollment-history
-Cookie: token={{parentOrStudentToken}}
+### 4.8 Bulk promote a class
+POST {{studentsUrl}}/bulk-promote
+Content-Type: application/json
 
-### 10. Delete Student Record (Students Service)
-DELETE {{studentUrl}}/{{studentId}}
-Cookie: token={{schoolAdminToken}}
+{
+  "schoolId": "{{schoolId}}",
+  "fromClassId": "{{classId}}",
+  "toClassId": "{{class2Id}}"
+}
+
+### ================================================================
+### 5. GUARDIANS
+### ================================================================
+
+### 5.1 Add guardian
+POST {{studentsUrl}}/{{studentId}}/guardians
+Content-Type: application/json
+
+{
+  "guardianUserId": "{{parentUserId}}",
+  "relationship": "Father",
+  "isPrimary": true,
+  "isFeePayer": true
+}
+
+### 5.2 List guardians
+GET {{studentsUrl}}/{{studentId}}/guardians
+
+### 5.3 Set primary
+PUT {{studentsUrl}}/{{studentId}}/guardians/primary
+Content-Type: application/json
+
+{
+  "guardianUserId": "{{parentUserId}}"
+}
+
+### 5.4 Update relationship
+PUT {{studentsUrl}}/{{studentId}}/guardians/{{parentUserId}}
+Content-Type: application/json
+
+{
+  "relationship": "Guardian",
+  "canPickup": false
+}
+
+### 5.5 List students for a guardian
+GET {{studentsUrl}}/guardian/{{parentUserId}}
+
+### 5.6 Remove guardian
+DELETE {{studentsUrl}}/{{studentId}}/guardians
+Content-Type: application/json
+
+{
+  "guardianUserId": "{{parentUserId}}"
+}
+
+### ================================================================
+### 6. ENROLLMENT HISTORY
+### ================================================================
+
+### 6.1 Full history
+GET {{studentsUrl}}/{{studentId}}/enrollments
+
+### 6.2 Current enrollment
+GET {{studentsUrl}}/{{studentId}}/enrollments/current
+
+### ================================================================
+### 7. DOCUMENTS
+### ================================================================
+
+### 7.1 Add document
+POST {{studentsUrl}}/{{studentId}}/documents
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "category": "BirthCertificate",
+  "title": "Birth Certificate",
+  "fileUrl": "https://example.com/files/birth-cert.pdf",
+  "isVisibleToParent": true
+}
+
+### 7.2 List documents
+GET {{studentsUrl}}/{{studentId}}/documents
+
+### ================================================================
+### 8. HEALTH RECORDS
+### ================================================================
+
+### 8.1 Add health record
+POST {{studentsUrl}}/{{studentId}}/health
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "recordType": "Allergy",
+  "title": "Peanut allergy",
+  "description": "Severe reaction — EpiPen kept at sick bay."
+}
+
+### 8.2 List health records
+GET {{studentsUrl}}/{{studentId}}/health
+
+### ================================================================
+### 9. STATS
+### ================================================================
+
+### 9.1 Count by school
+GET {{studentsUrl}}/school/{{schoolId}}/count
+
+### 9.2 Count by class
+GET {{studentsUrl}}/class/{{classId}}/count
+
+### 9.3 Gender breakdown
+GET {{studentsUrl}}/school/{{schoolId}}/by-gender
+
+### 9.4 Student statistics
+GET {{studentsUrl}}/{{studentId}}/statistics
+
+### 9.5 Validate data
+GET {{studentsUrl}}/{{studentId}}/validate

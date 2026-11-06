@@ -1,48 +1,83 @@
-# 🎫 Event & Ticketing Management System - Backend
+# 🏫 Junior School Management System — Backend
 
-This is the backend service for an Event & Ticketing Management System built with **TypeScript**, **Express**, **Drizzle ORM**, **JWT**, **Nodemailer**, and **Node.js**. It powers user authentication, event creation, ticket purchasing, and email notifications.
+This is the backend service for a multi-tenant Junior School Management System built with **TypeScript**, **Express**, **Drizzle ORM**, **PostgreSQL**, **JWT (cookie-based)**, and **Node.js**. It powers user authentication, school administration, admissions, attendance, fees, and exams for one or more schools on a single deployment.
 
 ---
 
 ## 📦 Features
 
-- ✅ User Authentication with JWT
-- 🧾 Secure Password Hashing with Bcrypt
-- 🧑‍💼 Role-based Access (User, Organizer, Admin)
-- 🎟️ Event and Ticket Management
-- 📤 Email Notifications (via Nodemailer)
-- 🧠 Type-safe Database Layer using Drizzle ORM
-- 🗂️ Scalable Express API structure
-- ⚙️ Environment-based configuration
+- 🔐 **Cookie-based JWT authentication** — httponly session cookie, revocable server-side sessions
+- 🧾 **Bcrypt-hashed passwords** — never stores or transmits plain passwords
+- 🧑‍💼 **Multi-role access** — `super_admin`, `school_admin`, `principal`, `deputy_principal`, `bursar`, `registrar`, `librarian`, `teacher`, `parent`, `student`
+- 🏢 **Multi-tenant architecture** — every school is fully isolated; all reads/writes are scoped by `schoolId`
+- 🧑‍🎓 **Admissions** — atomic registration of `users` + `students` in one transaction
+- 👨‍👩‍👧 **Guardian linking** — parent accounts linked to students with primary/payer/pickup flags
+- 📅 **Academic terms** — current-term resolution, overlapping-date validation, promotion ladders
+- 🏫 **Academic structure** — grade levels with promotion chains, subjects, classes, class-subject assignments
+- ✅ **Attendance** — daily marking, bulk class entry, absentee tracking, chronic-absentee analytics, monthly registers
+- 💰 **Fees** — fee items, grade/boarding-aware fee structures, invoices, payments (cash/bank/M-Pesa/cheque), FIFO auto-allocation, arrears dashboards
+- 🎓 **Grading scales** — KCSE, CBC, IGCSE, percentage templates + custom scales with overlap rejection
+- 📝 **Exams** — term exams, schedules, mark entry with **auto-grade computation**, publishing, ranking, transcripts
+- 🧠 **Type-safe database layer** — Drizzle ORM throughout
+- 🗂️ **Modular Express API** — one folder per domain, consistent patterns
+- ⚙️ **Environment-based configuration** — `.env`-driven
 
 ---
 
-## 🧠 What Happens Behind the Scenes
+## 🧠 What happens behind the scenes
 
-1. **Authentication:**
-   - Users sign up and log in with credentials.
-   - Passwords are hashed securely using Bcrypt.
-   - A **JWT token** is issued on login for protected access.
+### Authentication
 
-2. **Event Management:**
-   - Organizers can create, update, and delete events.
-   - Events include details such as name, location, capacity, and schedule.
+- Users register with credentials. Passwords are hashed with Bcrypt.
+- On login, a JWT is issued and stored as an `httpOnly` cookie.
+- A matching `userSessions` row (hashed token) is written so sessions can be revoked.
+- `super_admin` has no `schoolId` and operates at the platform level.
+- All other roles are scoped to a single school.
 
-3. **Ticket Booking:**
-   - Users can browse events and purchase tickets.
-   - Ticket data is saved and (optionally) a QR code is generated.
-   - A **confirmation email** is sent to the user.
+### School setup
 
-4. **Email Notifications:**
-   - Sent via **Nodemailer** on key actions (registration, booking, etc.).
+- A super admin creates schools and school admins.
+- A school admin sets up grade levels (with promotion chains), subjects, and classes.
+- Academic terms are created per school — **exactly one is marked `isCurrentTerm = true`** (partial unique index enforces this).
 
-5. **Secure Access:**
-   - JWT middleware protects routes.
-   - Role-based access control separates users, organizers, and admins.
+### Admissions
 
-6. **Database Layer:**
-   - **Drizzle ORM** manages schema and type-safe queries.
-   - Supports PostgreSQL, MySQL, or SQLite depending on your `.env`.
+- `POST /students` creates **both** `users` (login) and `students` (academic identity) in a single transaction.
+- If a class is provided at admission time, an enrollment-history row is also written for the current term.
+- Parents are registered separately via `POST /auth/register/member` with `role: "parent"`, then linked via `POST /students/:id/guardians`.
+- `users.id` = auth identity. `students.id` = academic identity. Never interchange them.
+
+### Attendance
+
+- Teachers mark attendance daily per class.
+- Bulk entry is transactional — the whole class in one call.
+- Absence is not the same as zero; chronic-absentee queries use a partial index on `(schoolId, date) WHERE status IN ('Absent', 'Late')`.
+- Attempts to mark outside the current term or by the wrong teacher are rejected by the service.
+
+### Fees
+
+- Fee items are defined once per school (Tuition, Lunch, Boarding, Exam Fee, etc.).
+- Fee structures use a **three-level cascade**:
+  1. Class-specific override
+  2. Grade-level default
+  3. School-wide base
+- Each fee row also carries a **boarding status** (`Day` / `Boarding`) — so day and boarding students have different amounts for the same item.
+- Invoices generate line items automatically from the resolved structure for each student.
+- Payments auto-allocate **FIFO** to open invoices if not tied to a specific one — matching how bursars actually work.
+
+### Exams
+
+- A term exam is created with a linked grading scale (or falls back to the school's default).
+- Teachers enter marks per student per subject. The service **auto-computes `grade` and `points`** from the grading scale bands — the client never sends them.
+- Publishing an exam computes subject positions + class rankings and then **locks the exam** — further edits are rejected until unlocked.
+- Absent students (`isAbsent = true`) are excluded from rankings and means; they are not scored as zero.
+
+### Security
+
+- Cookie-based JWT on every protected route.
+- `bearAuth` middleware validates the cookie and populates `req.user` (`id`, `role`, `roles`, `schoolId`).
+- Route-level guards (`adminAuth`, `adminOrTeacherAuth`, `superAdminAuth`, `anyAuthenticatedUser`) enforce role access.
+- Cross-tenant writes are rejected by services — every mutation verifies the entity belongs to `req.user.schoolId`.
 
 ---
 
@@ -54,67 +89,11 @@ This is the backend service for an Event & Ticketing Management System built wit
 | Runtime     | Node.js                           |
 | Server      | Express.js                        |
 | ORM         | Drizzle ORM                       |
-| Database    | PostgreSQL / MySQL / SQLite       |
-| Auth        | JWT + bcrypt                      |
-| Mailer      | Nodemailer                        |
+| Database    | PostgreSQL                        |
+| Auth        | JWT (cookie-based) + bcrypt       |
+| Validation  | Zod                               |
 | Config      | dotenv                            |
 
 ---
 
-## 📁 Project Structure
-
-src/
-├── config/ # DB and mail configurations
-├── controllers/ # Route handlers
-├── middlewares/ # Auth and error middlewares
-├── models/ # Drizzle ORM schemas
-├── routes/ # API route definitions
-├── services/ # Business logic
-├── utils/ # Helper functions
-├── app.ts # Express app setup
-└── index.ts # Server entry point
-
-yaml
-Copy
-Edit
-
----
-
-## 🚀 Getting Started
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/yourusername/event-ticketing-backend.git
-cd event-ticketing-backend
-2. Install Dependencies
-bash
-Copy
-Edit
-npm install
-3. Setup Environment Variables
-Create a .env file in the root directory with the following values:
-
-env
-Copy
-Edit
-PORT=5000
-DATABASE_URL=postgres://user:password@localhost:5432/yourdb
-JWT_SECRET=your_jwt_secret
-EMAIL_HOST=smtp.example.com
-EMAIL_PORT=587
-EMAIL_USER=your_email@example.com
-EMAIL_PASS=your_email_password
-4. Setup Drizzle ORM
-Generate and push your schema:
-
-bash
-Copy
-Edit
-npx drizzle-kit generate
-npx drizzle-kit push
-5. Start the Development Server
-bash
-Copy
-Edit
-npm run dev
+## 📁 Project structure

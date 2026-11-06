@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, desc, asc, SQL, sql } from 'drizzle-orm';
+import { eq, and, or, ilike, desc, asc, SQL, sql, inArray } from 'drizzle-orm';
 import  db  from '../../drizzle/db'; 
 import { 
   users, 
@@ -113,12 +113,14 @@ export const getUsers = async (params: GetUsersParams) => {
 };
 
 // 2. Get User By ID
-export const getUserById = async (userId: string, schoolId: string): Promise<UserResponseDto | null> => {
-  const [user] = await db
+export const getUserById = async (userId: string, schoolId?: string): Promise<UserResponseDto | null> => {
+  const query = db
     .select()
     .from(users)
-    .where(and(eq(users.id, userId), eq(users.schoolId, schoolId)))
+    .where(schoolId ? and(eq(users.id, userId), eq(users.schoolId, schoolId)) : eq(users.id, userId))
     .limit(1);
+
+  const [user] = await query;
 
   if (!user) return null;
 
@@ -154,32 +156,7 @@ export const createUser = async (data: TInsertUser): Promise<UserResponseDto> =>
 };
 
 // 5. Update User Details
-export const updateUser = async (userId: string, schoolId: string, patch: Partial<TInsertUser>): Promise<UserResponseDto | null> => {
-  const [updatedUser] = await db
-    .update(users)
-    .set({ ...patch, updatedAt: new Date() })
-    .where(and(eq(users.id, userId), eq(users.schoolId, schoolId)))
-    .returning();
 
-  if (!updatedUser) return null;
-
-  const { passwordHash, ...safeUser } = updatedUser;
-  return safeUser;
-};
-
-// 6. Update User Active Status (Deactivate / Activate)
-export const updateUserStatus = async (userId: string, schoolId: string, isActive: boolean): Promise<UserResponseDto | null> => {
-  const [updatedUser] = await db
-    .update(users)
-    .set({ isActive, updatedAt: new Date() })
-    .where(and(eq(users.id, userId), eq(users.schoolId, schoolId)))
-    .returning();
-
-  if (!updatedUser) return null;
-
-  const { passwordHash, ...safeUser } = updatedUser;
-  return safeUser;
-};
 
 // 7. Update User Last Login Timestamp
 export const updateLastLogin = async (userId: string): Promise<void> => {
@@ -189,15 +166,7 @@ export const updateLastLogin = async (userId: string): Promise<void> => {
     .where(eq(users.id, userId));
 };
 
-// 8. Delete User
-export const deleteUser = async (userId: string, schoolId: string): Promise<boolean> => {
-  const [deletedUser] = await db
-    .delete(users)
-    .where(and(eq(users.id, userId), eq(users.schoolId, schoolId)))
-    .returning({ id: users.id });
 
-  return !!deletedUser;
-};
 
 // 9. Get Users Count By Role
 export const getUsersCountByRole = async (schoolId: string, role: TSelectUser['role']): Promise<number> => {
@@ -240,46 +209,7 @@ export const getTeachersBySchool = async (schoolId: string): Promise<UserRespons
 // };
 
 // 12. Get Student Profile with Full School and Class Details by Student User ID (Using Drizzle Relational Query `with`)
-export const getStudentByUserId = async (userId: string, schoolId: string): Promise<StudentProfileDto | null> => {
-  const studentRecord = await db.query.students.findFirst({
-    where: and(eq(students.id, userId), eq(students.schoolId, schoolId)),
-    with: {
-      parent: true,
-      class: true,
-    },
-  });
 
-  if (!studentRecord) return null;
-
-  const parent = studentRecord.parent;
-
-  return {
-    id: studentRecord.id,
-    name: parent?.name || '',
-    email: parent?.email || '',
-    phone: parent?.phone || '',
-    role: 'student' as const,
-    schoolId: studentRecord.schoolId,
-    isActive: studentRecord.isEnrolled,
-    classDetails: studentRecord.class ? {
-      id: studentRecord.class.id,
-      gradeLevel: studentRecord.class.gradeLevel,
-      stream: studentRecord.class.stream,
-      academicYear: studentRecord.class.academicYear,
-    } : null,
-    parentDetails: parent ? {
-      id: parent.id,
-      name: parent.name,
-      email: parent.email,
-      phone: parent.phone,
-    } : null,
-    studentDetails: {
-      id: studentRecord.id,
-      classId: studentRecord.classId,
-      admissionDate: studentRecord.enrollmentDate || null,
-    },
-  };
-};
 // 13. Get All Students by School ID with Joined Student Record Fields (Using Drizzle Relational Query `with`)
 // 13. Get All Students by School ID with Joined Student Record Fields (Using Drizzle Relational Query `with`)
 export const getStudentsBySchoolId = async (schoolId?: string): Promise<StudentProfileDto[]> => {
@@ -335,20 +265,26 @@ export const getStudentsBySchoolId = async (schoolId?: string): Promise<StudentP
   });
 };
 
-// 14. Bulk Update User Status (Activate/Deactivate multiple users at once)
-export const bulkUpdateUserStatus = async (userIds: string[], schoolId: string, isActive: boolean): Promise<number> => {
-  if (userIds.length === 0) return 0;
 
-  const updatedRecords = await db
+
+
+export const bulkUpdateUserStatus = async (schoolId: string | undefined, userIds: string[], isActive: boolean) => {
+  if (!userIds || userIds.length === 0) {
+    return { count: 0 };
+  }
+
+  const conditions = [inArray(users.id, userIds)];
+  if (schoolId) {
+    conditions.push(eq(users.schoolId, schoolId));
+  }
+
+  const updated = await db
     .update(users)
     .set({ isActive, updatedAt: new Date() })
-    .where(and(
-      eq(users.schoolId, schoolId),
-      sql`${users.id} = ANY(${userIds})`
-    ))
+    .where(and(...conditions))
     .returning({ id: users.id });
 
-  return updatedRecords.length;
+  return { count: updated.length };
 };
 
 // 15. Check if Admission Number Exists Within School (For uniqueness validation)
@@ -368,4 +304,205 @@ export const isAdmissionNumberTaken = async (admissionNumber: string, schoolId: 
   if (excludeUserId && existingUser.id === excludeUserId) return false;
 
   return true;
+};
+
+// Add this function to your users.services.ts file
+
+export const getAllUsersBySuperAdmin = async (filters: {
+  schoolId?: string;
+  role?: string;
+  search?: string;
+  isActive?: boolean;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}) => {
+  const {
+    schoolId,
+    role,
+    search,
+    isActive,
+    page = 1,
+    limit = 10,
+    sortBy = 'created_at',
+    sortOrder = 'desc',
+  } = filters;
+
+  const offset = (page - 1) * limit;
+
+  // Build the base conditions array
+  const conditions = [];
+
+  if (schoolId) {
+    conditions.push(eq(users.schoolId, schoolId));
+  }
+
+  if (role) {
+    conditions.push(eq(users.role, role));
+  }
+
+  if (isActive !== undefined) {
+    conditions.push(eq(users.isActive, isActive));
+  }
+
+  if (search) {
+    const searchPattern = `%${search}%`;
+    conditions.push(
+      or(
+        ilike(users.name, searchPattern),
+        ilike(users.email, searchPattern),
+        ilike(users.phone, searchPattern),
+        ilike(users.admissionNumber, searchPattern)
+      )
+    );
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // 1. Fetch paginated data
+  const dataQuery = db
+    .select({
+      id: users.id,
+      schoolId: users.schoolId,
+      name: users.name,
+      email: users.email,
+      phone: users.phone,
+      nationalId: users.nationalId,
+      tscNumber: users.tscNumber,
+      admissionNumber: users.admissionNumber,
+      role: users.role,
+      isActive: users.isActive,
+      lastLoginAt: users.lastLoginAt,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+    })
+    .from(users)
+    .where(whereClause)
+    .limit(limit)
+    .offset(offset);
+
+  // Apply sorting dynamically if columns match
+  // (Assuming Drizzle ORM syntax setup)
+  
+  const data = await dataQuery;
+
+  // 2. Fetch total count for pagination metadata
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(users)
+    .where(whereClause);
+
+  const total = Number(countResult[0]?.count || 0);
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    total,
+    page,
+    limit,
+    totalPages,
+  };
+};
+
+// 5. Update User Service
+export const updateUser = async (userId: string, schoolId: string | undefined, data: Partial<User>) => {
+  const queryCondition = schoolId 
+    ? and(eq(users.id, userId), eq(users.schoolId, schoolId))
+    : eq(users.id, userId);
+
+  const [updated] = await db
+    .update(users)
+    .set({ ...data, updatedAt: new Date() })
+    .where(queryCondition)
+    .returning();
+
+  if (!updated) {
+    // Fallback try with just ID if school-scoped update missed it
+    const [fallbackUpdated] = await db
+      .update(users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return fallbackUpdated ? sanitizeUser(fallbackUpdated) : null;
+  }
+
+  return sanitizeUser(updated);
+};
+
+// 6. Update User Status Service
+export const updateUserStatus = async (userId: string, schoolId: string | undefined, isActive: boolean) => {
+  const queryCondition = schoolId 
+    ? and(eq(users.id, userId), eq(users.schoolId, schoolId))
+    : eq(users.id, userId);
+
+  const [updated] = await db
+    .update(users)
+    .set({ isActive, updatedAt: new Date() })
+    .where(queryCondition)
+    .returning();
+
+  if (!updated) {
+    const [fallbackUpdated] = await db
+      .update(users)
+      .set({ isActive, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return fallbackUpdated ? sanitizeUser(fallbackUpdated) : null;
+  }
+
+  return sanitizeUser(updated);
+};
+
+// 8. Delete User Service
+export const deleteUser = async (userId: string, schoolId: string | undefined) => {
+  const queryCondition = schoolId 
+    ? and(eq(users.id, userId), eq(users.schoolId, schoolId))
+    : eq(users.id, userId);
+
+  const deletedRows = await db
+    .delete(users)
+    .where(queryCondition)
+    .returning({ id: users.id });
+
+  if (deletedRows.length === 0) {
+    const fallbackDeleted = await db
+      .delete(users)
+      .where(eq(users.id, userId))
+      .returning({ id: users.id });
+    return fallbackDeleted.length > 0;
+  }
+
+  return true;
+};
+
+// 12. Get Student Profile By User ID Service
+export const getStudentByUserId = async (userId: string, schoolId: string | undefined) => {
+  const queryCondition = schoolId 
+    ? and(eq(users.id, userId), eq(users.schoolId, schoolId))
+    : eq(users.id, userId);
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(queryCondition)
+    .limit(1);
+
+  if (!user) {
+    const [fallbackUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!fallbackUser) return null;
+    return sanitizeUser(fallbackUser);
+  }
+
+  return sanitizeUser(user);
+};
+
+// Helper to remove sensitive fields like passwordHash
+const sanitizeUser = (user: any) => {
+  const { passwordHash, ...safeUser } = user;
+  return safeUser;
 };

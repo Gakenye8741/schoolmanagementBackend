@@ -1,0 +1,2 @@
+ALTER TABLE "users" ADD COLUMN "roles" "user_role"[] DEFAULT ARRAY[]::user_role[] NOT NULL;--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "user_role_in_roles_chk" CHECK ("users"."role" = ANY("users"."roles"));

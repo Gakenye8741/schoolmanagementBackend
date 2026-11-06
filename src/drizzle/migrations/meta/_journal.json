@@ -113,6 +113,34 @@
       "when": 1789065067068,
       "tag": "0015_milky_sinister_six",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793529642542,
+      "tag": "0016_wild_rockslide",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793533287453,
+      "tag": "0017_friendly_black_bird",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793648402127,
+      "tag": "0018_wild_silver_samurai",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793894103245,
+      "tag": "0019_low_magma",
+      "breakpoints": true
     }
   ]
 }

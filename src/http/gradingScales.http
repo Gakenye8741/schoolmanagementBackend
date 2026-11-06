@@ -1,0 +1,341 @@
+@baseUrl = http://localhost:5000/api
+@scalesUrl = {{baseUrl}}/grading-scales
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+
+### Note: cookie auth — login first via /api/auth/login
+
+# ================================================================
+# SETUP
+# ================================================================
+
+### 0.1 Login as admin
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+
+# ================================================================
+# 1. SEED A STANDARD SCALE
+# ================================================================
+
+### 1.1 Seed KCSE scale
+# @name seedKCSE
+POST {{scalesUrl}}/scales/seed
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "template": "KCSE"
+}
+
+### 1.2 Seed CBC scale
+# @name seedCBC
+POST {{scalesUrl}}/scales/seed
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "template": "CBC"
+}
+
+### 1.3 Seed Percentage A-E
+POST {{scalesUrl}}/scales/seed
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "template": "PERCENTAGE_A_E"
+}
+
+### 1.4 Seed IGCSE 1-9
+POST {{scalesUrl}}/scales/seed
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "template": "IGCSE_1_9"
+}
+
+### Captured
+@kcseScaleId = {{seedKCSE.response.body.$.scale.id}}
+@cbcScaleId = {{seedCBC.response.body.$.scale.id}}
+
+
+# ================================================================
+# 2. CREATE / LIST / UPDATE SCALES
+# ================================================================
+
+### 2.1 Create a custom scale
+# @name customScale
+POST {{scalesUrl}}/scales
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Custom 4-Band Scale",
+  "description": "A simple 4-band scale",
+  "isDefault": false
+}
+
+### Captured
+@customScaleId = 79f3e4cc-1f7f-43e4-933d-486ec2e31e31
+
+### 2.2 List all scales
+GET {{scalesUrl}}/scales/school/{{schoolId}}
+
+### 2.3 Search scales
+GET {{scalesUrl}}/scales/school/{{schoolId}}/search?query=KCSE
+
+### 2.4 Get KCSE by ID (with bands)
+GET {{scalesUrl}}/scales/{{kcseScaleId}}
+
+### 2.5 Update custom scale description
+PUT {{scalesUrl}}/scales/{{customScaleId}}
+Content-Type: application/json
+
+{
+  "description": "A custom 4-band scale, edited"
+}
+
+### 2.6 Set KCSE as default
+POST {{scalesUrl}}/scales/school/{{schoolId}}/set-default
+Content-Type: application/json
+
+{
+  "scaleId": "{{kcseScaleId}}"
+}
+
+### 2.7 Get the default scale
+GET {{scalesUrl}}/scales/school/{{schoolId}}/default
+
+### 2.8 Copy KCSE to "KCSE 2027"
+POST {{scalesUrl}}/scales/copy
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "sourceScaleId": "{{kcseScaleId}}",
+  "newName": "KCSE 2027"
+}
+
+
+# ================================================================
+# 3. MANAGE BANDS
+# ================================================================
+
+### 3.1 List KCSE bands
+GET {{scalesUrl}}/scales/{{kcseScaleId}}/bands
+
+### 3.2 Create a band on the CUSTOM scale (empty scale, no conflicts)
+### scaleId comes from the URL — not the body
+# @name createBand
+POST {{scalesUrl}}/scales/{{customScaleId}}/bands
+Content-Type: application/json
+
+{
+  "minScore": "80.00",
+  "maxScore": "100.00",
+  "grade": "A",
+  "points": 4,
+  "descriptor": "Excellent",
+  "remark": "Outstanding work."
+}
+
+### 3.3 Bulk create remaining bands on the CUSTOM scale
+### scaleId comes from the URL — not the body
+POST {{scalesUrl}}/scales/{{customScaleId}}/bands/bulk
+Content-Type: application/json
+
+{
+  "bands": [
+    { "minScore": "65.00", "maxScore": "79.99", "grade": "B", "points": 3, "descriptor": "Good" },
+    { "minScore": "50.00", "maxScore": "64.99", "grade": "C", "points": 2, "descriptor": "Average" },
+    { "minScore": "0.00", "maxScore": "49.99", "grade": "D", "points": 1, "descriptor": "Below Average" }
+  ]
+}
+
+### 3.4 Update a band
+PUT {{scalesUrl}}/bands/{{createBand.response.body.$.band.id}}
+Content-Type: application/json
+
+{
+  "remark": "Excellent — top of class."
+}
+
+### 3.5 Delete a band
+DELETE {{scalesUrl}}/bands/{{createBand.response.body.$.band.id}}
+
+### 3.6 Delete all bands on the custom scale
+DELETE {{scalesUrl}}/scales/{{customScaleId}}/bands
+
+
+# ================================================================
+# 4. RESOLVE MARK → GRADE
+# ================================================================
+
+### 4.1 Resolve 85 → KCSE grade
+POST {{scalesUrl}}/resolve
+Content-Type: application/json
+
+{
+  "scaleId": "{{kcseScaleId}}",
+  "mark": "85.00"
+}
+
+### 4.2 Resolve 72 → KCSE grade
+POST {{scalesUrl}}/resolve
+Content-Type: application/json
+
+{
+  "scaleId": "{{kcseScaleId}}",
+  "mark": "72.00"
+}
+
+### 4.3 Resolve 45 → CBC level
+POST {{scalesUrl}}/resolve
+Content-Type: application/json
+
+{
+  "scaleId": "{{cbcScaleId}}",
+  "mark": "45.00"
+}
+
+### 4.4 Resolve 55 → CBC level
+POST {{scalesUrl}}/resolve
+Content-Type: application/json
+
+{
+  "scaleId": "{{cbcScaleId}}",
+  "mark": "55.00"
+}
+
+### 4.5 Resolve 88 → CBC level
+POST {{scalesUrl}}/resolve
+Content-Type: application/json
+
+{
+  "scaleId": "{{cbcScaleId}}",
+  "mark": "88.00"
+}
+
+
+# ================================================================
+# 5. VALIDATE SCALE
+# ================================================================
+
+### 5.1 Validate KCSE (should be fully covered, no overlaps)
+GET {{scalesUrl}}/scales/{{kcseScaleId}}/validate
+
+### 5.2 Validate CBC (should be fully covered)
+GET {{scalesUrl}}/scales/{{cbcScaleId}}/validate
+
+### 5.3 Validate custom scale after 3.2 + 3.3 (should be fully covered, 4 bands)
+GET {{scalesUrl}}/scales/{{customScaleId}}/validate
+
+
+# ================================================================
+# 6. NEGATIVE TESTS
+# ================================================================
+
+### 6.1 Overlapping band — expect 400
+POST {{scalesUrl}}/scales/{{cbcScaleId}}/bands
+Content-Type: application/json
+
+{
+  "minScore": "75.00",
+  "maxScore": "85.00",
+  "grade": "X",
+  "descriptor": "Overlaps"
+}
+
+### 6.2 Invalid score range (max < min) — expect 400
+POST {{scalesUrl}}/scales/{{customScaleId}}/bands
+Content-Type: application/json
+
+{
+  "minScore": "90.00",
+  "maxScore": "50.00",
+  "grade": "Z"
+}
+
+### 6.3 Score out of range (> 100) — expect 400
+POST {{scalesUrl}}/scales/{{customScaleId}}/bands
+Content-Type: application/json
+
+{
+  "minScore": "0.00",
+  "maxScore": "150.00",
+  "grade": "X"
+}
+
+### 6.4 Duplicate grade label in bulk — expect 400
+POST {{scalesUrl}}/scales/{{customScaleId}}/bands/bulk
+Content-Type: application/json
+
+{
+  "bands": [
+    { "minScore": "80.00", "maxScore": "100.00", "grade": "A" },
+    { "minScore": "0.00", "maxScore": "79.99", "grade": "A" }
+  ]
+}
+
+### 6.5 Resolve mark outside any band (custom scale, 82 before bands exist) — expect 400 or a valid grade
+### (Run this BEFORE 3.2/3.3 to demonstrate empty-scale behavior; after 3.2/3.3 it returns grade A)
+POST {{scalesUrl}}/resolve
+Content-Type: application/json
+
+{
+  "scaleId": "{{customScaleId}}",
+  "mark": "82.00"
+}
+
+### 6.6 Resolve with mark > 100 — expect 400
+POST {{scalesUrl}}/resolve
+Content-Type: application/json
+
+{
+  "scaleId": "{{kcseScaleId}}",
+  "mark": "150.00"
+}
+
+### 6.7 Resolve with negative mark — expect 400
+POST {{scalesUrl}}/resolve
+Content-Type: application/json
+
+{
+  "scaleId": "{{kcseScaleId}}",
+  "mark": "-5.00"
+}
+
+### 6.8 Create scale with empty name — expect 400
+POST {{scalesUrl}}/scales
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": ""
+}
+
+### 6.9 Seed same template twice — expect 400 (duplicate)
+POST {{scalesUrl}}/scales/seed
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "template": "KCSE"
+}
+
+### 6.10 Update band to overlap existing — expect 400
+PUT {{scalesUrl}}/bands/{{createBand.response.body.$.band.id}}
+Content-Type: application/json
+
+{
+  "minScore": "50.00",
+  "maxScore": "90.00"
+}

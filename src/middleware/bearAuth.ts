@@ -5,11 +5,15 @@ import { userRoleEnum } from "../drizzle/schema";
 
 dotenv.config();
 
-// JWT payload type matching your school management roles
+// JWT payload type matching your school management roles.
+// `role` is the primary/display role. `roles` is the full set used for
+// permission checks. Old tokens (minted before the roles[] migration)
+// will only have `role`, which the middleware falls back to.
 type DecodedToken = {
   id: string; // uuid string
   email: string;
-  role: typeof userRoleEnum.enumValues[number]; // 'super_admin' | 'school_admin' | 'bursar' | 'teacher' | 'parent' | 'student'
+  role: (typeof userRoleEnum.enumValues)[number];
+  roles?: (typeof userRoleEnum.enumValues)[number][];
   schoolId?: string | null;
   exp: number;
 };
@@ -36,16 +40,27 @@ export const verifyToken = async (
   }
 };
 
-// Auth middleware factory supporting single role, array of roles, or "any"
+/**
+ * Auth middleware factory.
+ * Accepts a single role, an array of roles, or the string "any" (any authenticated user).
+ */
 export const authMiddleware = (
-  requiredRoles: (typeof userRoleEnum.enumValues[number]) | (typeof userRoleEnum.enumValues[number])[] | "any"
+  requiredRoles:
+    | (typeof userRoleEnum.enumValues)[number]
+    | (typeof userRoleEnum.enumValues)[number][]
+    | "any"
 ): ((req: Request, res: Response, next: NextFunction) => Promise<void>) => {
   return async (req: Request, res: Response, next: NextFunction) => {
-    // Extract token from HttpOnly cookie first, with fallback to Authorization header for testing
-    const token = req.cookies?.token || req.header("Authorization")?.replace("Bearer ", "");
+    // Extract token from HttpOnly cookie first, fallback to Authorization header for testing
+    const token =
+      req.cookies?.token ||
+      req.header("Authorization")?.replace("Bearer ", "");
 
     if (!token) {
-      res.status(401).json({ success: false, message: "Authentication token is missing" });
+      res.status(401).json({
+        success: false,
+        message: "You need to sign in to do that. No authentication token was provided.",
+      });
       return;
     }
 
@@ -55,39 +70,111 @@ export const authMiddleware = (
     );
 
     if (!decodedToken) {
-      res.status(401).json({ success: false, message: "Invalid or expired token" });
+      res.status(401).json({
+        success: false,
+        message: "Your session has expired or the token is invalid. Please sign in again.",
+      });
       return;
     }
 
-    const userRole = decodedToken.role;
+    // Multi-role check: token carries `roles[]`, with a fallback to `[role]`
+    // for tokens minted before the roles[] migration.
+    const userRoles = decodedToken.roles?.length
+      ? decodedToken.roles
+      : [decodedToken.role];
 
-    if (
+    const allowed =
       requiredRoles === "any" ||
-      userRole === requiredRoles ||
-      (Array.isArray(requiredRoles) && requiredRoles.includes(userRole))
-    ) {
+      (Array.isArray(requiredRoles)
+        ? requiredRoles.some((r) => userRoles.includes(r))
+        : userRoles.includes(requiredRoles));
+
+    if (allowed) {
       req.user = decodedToken;
       next();
     } else {
       res.status(403).json({
         success: false,
-        message: "Forbidden: You do not have permission to access this resource",
+        message:
+          "You don't have permission to access this resource. If you think this is a mistake, contact your administrator.",
       });
     }
   };
 };
 
-// Role-based middleware exports for School Management System
+// ---- Single-role middleware ------------------------------------------------
+
 export const superAdminAuth = authMiddleware("super_admin");
-export const schoolAdminAuth = authMiddleware("school_admin");
+export const principalAuth = authMiddleware("principal");
+export const deputyPrincipalAuth = authMiddleware("deputy_principal");
+export const schoolAdminAuth = authMiddleware("school_admin" as any); // legacy — see note in router
 export const bursarAuth = authMiddleware("bursar");
+export const registrarAuth = authMiddleware("registrar");
+export const librarianAuth = authMiddleware("librarian");
 export const teacherAuth = authMiddleware("teacher");
 export const parentAuth = authMiddleware("parent");
 export const studentAuth = authMiddleware("student");
 
-// Combined administrative access helpers
-export const adminAuth = authMiddleware(["super_admin", "school_admin", "bursar"]);
-export const adminOrTeacherAuth = authMiddleware(["super_admin", "school_admin", "teacher", "bursar"]);
+// ---- Combined access helpers ----------------------------------------------
 
-// Any authenticated user
+/**
+ * Any authenticated user, regardless of role.
+ */
 export const anyAuthenticatedUser = authMiddleware("any");
+
+/**
+ * Platform-level admins — super_admin only.
+ */
+export const platformAdminAuth = authMiddleware("super_admin");
+
+/**
+ * School-level management — anyone who can manage school users.
+ * Covers the old school_admin role, the new principal/deputy_principal roles,
+ * and super_admin.
+ */
+export const schoolManagementAuth = authMiddleware([
+  "super_admin",
+  "school_admin",
+  "principal",
+  "deputy_principal",
+]);
+
+/**
+ * Administrative access for financial / registry operations.
+ */
+export const adminAuth = authMiddleware([
+  "super_admin",
+  "school_admin",
+  "principal",
+  "deputy_principal",
+  "bursar",
+  "registrar",
+]);
+
+/**
+ * School staff — anyone who can see user lists but not necessarily modify them.
+ */
+export const staffAuth = authMiddleware([
+  "super_admin",
+  "school_admin",
+  "principal",
+  "deputy_principal",
+  "bursar",
+  "registrar",
+  "librarian",
+  "teacher",
+]);
+
+/**
+ * Admin or teaching staff — for endpoints that list users within a school.
+ */
+export const adminOrTeacherAuth = authMiddleware([
+  "super_admin",
+  "school_admin",
+  "principal",
+  "deputy_principal",
+  "bursar",
+  "registrar",
+  "librarian",
+  "teacher",
+]);

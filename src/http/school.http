@@ -1,199 +1,610 @@
-@baseUrl = http://localhost:5000/api
-@superAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjlmOTVkYjE5LWFlMGMtNDc4Yi1hZDZkLTI1ZGQ1N2ZkOTcyYSIsImVtYWlsIjoiYWRtaW5AcGxhdGZvcm0uY29tIiwicm9sZSI6InN1cGVyX2FkbWluIiwic2Nob29sSWQiOm51bGwsImlhdCI6MTc4OTA2NTY0MCwiZXhwIjoxNzg5NjcwNDQwfQ
-@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImIzMGY2NjhhLTgyYTUtNGJlMi04ZTE2LTEyZTAxMjIzNzk4MiIsImVtYWlsIjoiYWRtaW5AcGxhdGZvcm0uY29tIiwicm9sZSI6InN1cGVyX2FkbWluIiwic2Nob29sSWQiOm51bGwsImlhdCI6MTc4OTAzNDQ3NCwiZXhwIjoxNzg5NjM5Mjc0fQ.19mnGfLtpbo8KtuOt7_wHugEi3xYnD1tNS9bKG-z0KM
-@schoolId = 123c89a4-87cd-4395-a902-64f5cb260380
-@slug = nyayo-primary
-@studentoken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImU5Yjk4NTIzLTU2NzMtNDcwMy04ZjRhLTM5NDRmNzA4OTAyYSIsImVtYWlsIjoiam9obi5zdHVkZW50QHNjaG9vbC5lZHUiLCJyb2xlIjoic3R1ZGVudCIsInNjaG9vbElkIjoiOTE4YTI3ZjMtMjMyMS00ZjY5LWExNWMtOWM2MWY5ZjRmODE4IiwiaWF0IjoxNzg5OTY4NjIyLCJleHAiOjE3ODk1NzM0MjJ9.nrmSA9dH0dNuV7B1nzIT49ipwW15Xf0qlyXO66im-ds
+###############################################################################
+#  SCHOOL API TESTS  (works with the "REST Client" extension in VS Code / Windsurf)
+#
+#  HOW TO USE
+#  1. Change the variables below (base URL, tokens, school ID).
+#  2. Click "Send Request" above any request.
+#  3. Start with "Create school", copy the "id" from the answer into @schoolId.
+#
+#  TOKENS
+#   - superToken : login token of a Super Admin
+#   - adminToken : login token of a School Admin
+#   - userToken  : login token of any logged-in user
+###############################################################################
 
-### 1. Create a school (Super Admin) - Local Example
-POST {{baseUrl}}/schools
+@baseUrl = http://localhost:5000/api/schools
+@superToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImU1NTM3MzllLWFiNzAtNDQ1Yy1hNjY3LTFjNWZkZDljOWJiNSIsImVtYWlsIjoic3VwZXJAcGxhdGZvcm0udGVzdCIsInJvbGUiOiJzdXBlcl9hZG1pbiIsInJvbGVzIjpbInN1cGVyX2FkbWluIl0sInNjaG9vbElkIjpudWxsLCJpYXQiOjE3OTM1NDE4MTYsImV4cCI6MTc5NDE0NjYxNn0.h7Kot0Upmpz_33-yq9ZtSep3cFmpaTm_nYDbMjc98bA
+@adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImU1NTM3MzllLWFiNzAtNDQ1Yy1hNjY3LTFjNWZkZDljOWJiNSIsImVtYWlsIjoic3VwZXJAcGxhdGZvcm0udGVzdCIsInJvbGUiOiJzdXBlcl9hZG1pbiIsInJvbGVzIjpbInN1cGVyX2FkbWluIl0sInNjaG9vbElkIjpudWxsLCJpYXQiOjE3OTM1NDI4NjUsImV4cCI6MTc5NDE0NzY2NX0.iebM_j4YejNn6jgACjNnyZtK6ypcqQzvBRSmuqWan70
+@userToken = PASTE_ANY_USER_TOKEN_HERE
+
+# Replace these after you create your first school
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@slug = greenfield-academy
+@registrationNumber = REG-2024-001
+@knecCode = KNEC-12345
+@moduleKey = library
+
+
+###############################################################################
+# 1. PUBLIC ROUTES (no token needed)
+###############################################################################
+
+### 1.1 Get school by slug (portal / subdomain)
+GET {{baseUrl}}/slug/{{slug}}
+
+### 1.2 Get public branding (for login pages)
+GET {{baseUrl}}/public/{{slug}}/branding
+
+
+###############################################################################
+# 2. SUPER ADMIN: FIXED-WORD ROUTES
+###############################################################################
+
+### 2.1 Platform statistics (dashboard)
+GET {{baseUrl}}/platform-stats
+Authorization: Bearer {{superToken}}
+
+### 2.2 Schools grouped by county
+GET {{baseUrl}}/by-county
+Authorization: Bearer {{superToken}}
+
+### 2.3 Trash: list deleted schools
+GET {{baseUrl}}/trash
+Authorization: Bearer {{superToken}}
+
+### 2.4 Schools expiring in the next 14 days
+GET {{baseUrl}}/expiring?withinDays=14
+Authorization: Bearer {{superToken}}
+
+### 2.5 Run the subscription lifecycle job (7 days grace)
+POST {{baseUrl}}/subscriptions/run-lifecycle
+Authorization: Bearer {{superToken}}
 Content-Type: application/json
-Cookie: token={{superAdminToken}}
 
 {
-  "name": "Nyahururu High School",
-  "shortName": "Nyahururu High",
-  "slug": "nyahururu-high",
-  "motto": "Strive for Excellence",
-  "registrationNumber": "MOE/SEC/2005/0892",
-  "knecCode": "23456789",
-  "schoolType": "Secondary",
-  "curriculumType": "CBC",
-  "establishedYear": 1985,
-  "primaryColor": "#1E3A8A",
-  "secondaryColor": "#D97706",
-  "timezone": "Africa/Nairobi",
-  "currency": "KES",
-  "principalName": "Dr. Peter Kiprop",
-  "subscriptionPlan": "Standard",
-  "subscriptionStatus": "Active"
+  "graceDays": 7
 }
 
-### 1.1 Register International School of Kenya (ISK) [Famous International School]
-POST {{baseUrl}}/schools
+### 2.6 Check if a slug is free
+GET {{baseUrl}}/check-slug?slug=new-school-name
+Authorization: Bearer {{superToken}}
+
+### 2.7 Check if a slug is free (ignore one school, useful when editing)
+GET {{baseUrl}}/check-slug?slug={{slug}}&excludeSchoolId={{schoolId}}
+Authorization: Bearer {{superToken}}
+
+### 2.8 Check if a registration number is free
+GET {{baseUrl}}/check-registration-number?registrationNumber={{registrationNumber}}
+Authorization: Bearer {{superToken}}
+
+### 2.9 Find school by registration number
+GET {{baseUrl}}/registration/{{registrationNumber}}
+Authorization: Bearer {{superToken}}
+
+### 2.10 Find school by KNEC code
+GET {{baseUrl}}/knec/{{knecCode}}
+Authorization: Bearer {{superToken}}
+
+### 2.11 Bulk activate / deactivate schools
+PATCH {{baseUrl}}/bulk/status
+Authorization: Bearer {{superToken}}
 Content-Type: application/json
-Cookie: token={{superAdminToken}}
 
 {
-  "name": "International School of Kenya",
-  "shortName": "ISK",
-  "slug": "international-school-of-kenya",
-  "motto": "Empowering students to create solutions for tomorrow's world",
-  "registrationNumber": "MOE/INT/1976/012",
-  "knecCode": "INT9012",
-  "schoolType": "HighSchool",
-  "curriculumType": "British",
-  "establishedYear": 1976,
-  "primaryColor": "#0F172A",
-  "secondaryColor": "#2563EB",
-  "address": "P.O. Box 14103-00800",
-  "county": "Nairobi",
-  "subCounty": "Westlands",
-  "phone": "+254202091300",
-  "email": "info@isk.ac.ke",
-  "website": "https://www.isk.ac.ke",
-  "timezone": "Africa/Nairobi",
-  "currency": "KES",
-  "principalName": "David Baird",
-  "subscriptionPlan": "Enterprise",
-  "subscriptionStatus": "Active"
-}
-
-### 1.2 Register Brookhouse School [Famous International School]
-POST {{baseUrl}}/schools
-Content-Type: application/json
-Cookie: token={{superAdminToken}}
-
-{
-  "name": "Brookhouse International School",
-  "shortName": "Brookhouse",
-  "slug": "brookhouse-school",
-  "motto": "Donari Vult Lucem (Prepared for Life)",
-  "registrationNumber": "MOE/INT/1981/445",
-  "knecCode": "INT4455",
-  "schoolType": "Mixed",
-  "curriculumType": "British",
-  "establishedYear": 1981,
-  "primaryColor": "#831843",
-  "secondaryColor": "#F59E0B",
-  "address": "P.O. Box 24987-00502",
-  "county": "Nairobi",
-  "subCounty": "Langata",
-  "phone": "+254202720312",
-  "email": "enquiries@brookhouse.ac.ke",
-  "website": "https://www.brookhouse.ac.ke",
-  "timezone": "Africa/Nairobi",
-  "currency": "KES",
-  "principalName": "Eric Ndubi",
-  "subscriptionPlan": "Enterprise",
-  "subscriptionStatus": "Active"
-}
-
-### 1.3 Register Rosslyn Academy [Famous International School]
-POST {{baseUrl}}/schools
-Content-Type: application/json
-Cookie: token={{superAdminToken}}
-
-{
-  "name": "Rosslyn Academy",
-  "shortName": "Rosslyn",
-  "slug": "rosslyn-academy",
-  "motto": "Truth in Love",
-  "registrationNumber": "MOE/INT/1967/992",
-  "knecCode": "INT9921",
-  "schoolType": "Secondary",
-  "curriculumType": "IGCSE",
-  "establishedYear": 1967,
-  "primaryColor": "#14532D",
-  "secondaryColor": "#CA8A04",
-  "address": "P.O. Box 14146-00800",
-  "county": "Nairobi",
-  "subCounty": "Gigiri",
-  "phone": "+254202633155",
-  "email": "info@rosslynacademy.com",
-  "website": "https://www.rosslynacademy.com",
-  "timezone": "Africa/Nairobi",
-  "currency": "KES",
-  "principalName": "Marcia Roberson",
-  "subscriptionPlan": "Enterprise",
-  "subscriptionStatus": "Active"
-}
-
-### 2. List all schools (Admin)
-GET {{baseUrl}}/schools
-Cookie: token={{superAdminToken}}
-
-### 3. Get school by ID (Any authenticated user)
-GET {{baseUrl}}/schools/{{schoolId}}
-Cookie: token={{studentoken}}
-
-### 4. Get school by slug (Public / Portal Resolution)
-GET {{baseUrl}}/schools/slug/{{slug}}
-
-### 5. Update school details (Super Admin)
-PUT {{baseUrl}}/schools/{{schoolId}}
-Content-Type: application/json
-Cookie: token={{superAdminToken}}
-
-{
-  "name": "Nyayo Primary School",
-  "motto": "Excellence and Integrity",
-  "logoUrl": "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=400&auto=format&fit=crop&q=80",
-  "faviconUrl": "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=100&auto=format&fit=crop&q=80",
-  "coverImageUrl": "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&auto=format&fit=crop&q=80"
-}
-
-### 6. Toggle school status (Super Admin)
-PATCH {{baseUrl}}/schools/{{schoolId}}/status
-Content-Type: application/json
-Cookie: token={{superAdminToken}}
-
-{
+  "ids": [
+    "00000000-0000-0000-0000-000000000000",
+    "11111111-1111-1111-1111-111111111111"
+  ],
   "isActive": false
 }
 
-### 7. Update school branding (Admin)
-PATCH {{baseUrl}}/schools/{{schoolId}}/branding
+
+###############################################################################
+# 3. CREATE & LIST SCHOOLS
+###############################################################################
+
+### 3.1 Create a school (only name, slug and schoolType are required)
+# @name createSchool
+POST {{baseUrl}}
+Authorization: Bearer {{superToken}}
 Content-Type: application/json
-Cookie: token={{schoolAdminToken}}
 
 {
-  "logoUrl": "https://cdn.example.com/schools/nyayo/logo.png",
-  "primaryColor": "#020202",
-  "secondaryColor": "#ce0bf5"
-}
+  "name": "Greenfield Academy",
+  "shortName": "Greenfield",
+  "slug": "greenfield-academy",
+  "motto": "Learning for Life",
+  "registrationNumber": "REG-2024-001",
+  "knecCode": "KNEC-12345",
+  "schoolType": "Mixed",
+  "curriculumType": "CBC",
+  "establishedYear": 2005,
 
-### 8. Update school subscription (Super Admin)
-PATCH {{baseUrl}}/schools/{{schoolId}}/subscription
-Content-Type: application/json
-Cookie: token={{superAdminToken}}
+  "primaryColor": "#0F172A",
+  "secondaryColor": "#64748B",
+  "accentColor": "#F59E0B",
+  "gradientFrom": "#0F172A",
+  "gradientTo": "#1E3A8A",
+  "gradientDirection": "to-r",
 
-{
+  "address": "P.O. Box 123, Nairobi",
+  "county": "Nairobi",
+  "subCounty": "Westlands",
+  "phone": "+254712345678",
+  "alternativePhone": "+254733445566",
+  "email": "info@greenfield.ac.ke",
+  "website": "https://greenfield.ac.ke",
+
+  "timezone": "Africa/Nairobi",
+  "currency": "KES",
+  "principalName": "Mary Wanjiku",
+
   "subscriptionPlan": "Trial",
   "subscriptionStatus": "Active",
-  "subscriptionExpiresAt": "2027-09-03T16:54:32.000Z"
+  "subscriptionExpiresAt": "2027-01-31T23:59:59.000Z"
 }
 
-### 9. Update school settings (Admin)
-PATCH {{baseUrl}}/schools/{{schoolId}}/settings
+### 3.2 Create a school (smallest possible body)
+POST {{baseUrl}}
+Authorization: Bearer {{superToken}}
 Content-Type: application/json
-Cookie: token={{schoolAdminToken}}
 
 {
-  "principalName": "Dr. John Kamau",
-  "establishedYear": 1995
+  "name": "Sunrise Primary",
+  "slug": "sunrise-primary",
+  "schoolType": "Primary"
 }
 
-### 10. Update school contact & location (Admin)
-PATCH {{baseUrl}}/schools/{{schoolId}}/contact
+### 3.3 List schools (default: page 1, 20 per page)
+GET {{baseUrl}}
+Authorization: Bearer {{userToken}}
+
+### 3.4 List schools with search, filters and sorting
+GET {{baseUrl}}?page=1&limit=10&search=green&schoolType=Mixed&curriculumType=CBC&subscriptionPlan=Trial&subscriptionStatus=Active&county=Nairobi&isActive=true&sortBy=name&sortOrder=asc
+Authorization: Bearer {{userToken}}
+
+### 3.5 List schools including deleted ones
+GET {{baseUrl}}?includeDeleted=true
+Authorization: Bearer {{superToken}}
+
+
+###############################################################################
+# 4. SUPER ADMIN: ONE SCHOOL
+###############################################################################
+
+### 4.1 Update a school (PUT)
+PUT {{baseUrl}}/{{schoolId}}
+Authorization: Bearer {{superToken}}
 Content-Type: application/json
-Cookie: token={{schoolAdminToken}}
 
 {
-  "address": "P.O. Box 450-20300",
-  "county": "Nyandarua",
-  "subCounty": "Nyahururu",
-  "phone": "+254722345678",
-  "email": "admin@nyahururuhigh.ac.ke",
-  "website": "https://nyahururuhigh.ac.ke"
+  "name": "Greenfield Academy (Updated)",
+  "motto": "Excellence in Everything",
+  "county": "Nairobi"
 }
+
+### 4.2 Update a school (PATCH, same as PUT)
+PATCH {{baseUrl}}/{{schoolId}}
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "shortName": "GFA",
+  "website": "https://greenfield.ac.ke"
+}
+
+### 4.3 Delete a school (soft delete, goes to trash)
+DELETE {{baseUrl}}/{{schoolId}}
+Authorization: Bearer {{superToken}}
+
+### 4.4 Restore a school from trash
+PATCH {{baseUrl}}/{{schoolId}}/restore
+Authorization: Bearer {{superToken}}
+
+### 4.5 Delete forever (school must be in trash first). CANNOT BE UNDONE
+DELETE {{baseUrl}}/{{schoolId}}/permanent
+Authorization: Bearer {{superToken}}
+
+### 4.6 Activate / deactivate a school
+PATCH {{baseUrl}}/{{schoolId}}/status
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "isActive": true
+}
+
+### 4.7 Change the school slug (changes its web address!)
+PATCH {{baseUrl}}/{{schoolId}}/slug
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "slug": "greenfield-academy-nairobi"
+}
+
+
+###############################################################################
+# 5. SUPER ADMIN: SUBSCRIPTION & BILLING
+###############################################################################
+
+### 5.1 Update subscription directly (override)
+PATCH {{baseUrl}}/{{schoolId}}/subscription
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "subscriptionPlan": "Standard",
+  "subscriptionStatus": "Active",
+  "subscriptionExpiresAt": "2027-06-30T23:59:59.000Z"
+}
+
+### 5.2 Change plan (uses the plan's default student limit)
+PATCH {{baseUrl}}/{{schoolId}}/subscription/plan
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "plan": "Premium"
+}
+
+### 5.3 Change plan with a custom student limit
+PATCH {{baseUrl}}/{{schoolId}}/subscription/plan
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "plan": "Premium",
+  "maxStudents": 1500
+}
+
+### 5.4 Change plan but keep the current student limit
+PATCH {{baseUrl}}/{{schoolId}}/subscription/plan
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "plan": "Standard",
+  "keepExistingLimit": true
+}
+
+### 5.5 Extend subscription by 30 days
+PATCH {{baseUrl}}/{{schoolId}}/subscription/extend
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "days": 30
+}
+
+### 5.6 Suspend subscription only
+PATCH {{baseUrl}}/{{schoolId}}/subscription/suspend
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{}
+
+### 5.7 Suspend subscription AND switch the school off
+PATCH {{baseUrl}}/{{schoolId}}/subscription/suspend
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "deactivate": true
+}
+
+### 5.8 Reactivate subscription
+PATCH {{baseUrl}}/{{schoolId}}/subscription/reactivate
+Authorization: Bearer {{superToken}}
+
+### 5.9 Cancel subscription
+PATCH {{baseUrl}}/{{schoolId}}/subscription/cancel
+Authorization: Bearer {{superToken}}
+
+
+###############################################################################
+# 6. SUPER ADMIN: STUDENT LIMIT & SMS CREDITS
+###############################################################################
+
+### 6.1 Set student limit
+PATCH {{baseUrl}}/{{schoolId}}/max-students
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "maxStudents": 500
+}
+
+### 6.2 Set unlimited students
+PATCH {{baseUrl}}/{{schoolId}}/max-students
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "maxStudents": null
+}
+
+### 6.3 Add SMS credits
+POST {{baseUrl}}/{{schoolId}}/sms-credits/add
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "amount": 1000
+}
+
+### 6.4 Use (deduct) SMS credits
+POST {{baseUrl}}/{{schoolId}}/sms-credits/deduct
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "amount": 25
+}
+
+
+###############################################################################
+# 7. SCHOOL ADMIN: BRANDING
+###############################################################################
+
+### 7.1 Update branding
+PATCH {{baseUrl}}/{{schoolId}}/branding
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "logoUrl": "https://example.com/logo.png",
+  "faviconUrl": "https://example.com/favicon.ico",
+  "coverImageUrl": "https://example.com/cover.jpg",
+  "primaryColor": "#1E3A8A",
+  "secondaryColor": "#64748B",
+  "accentColor": "#F59E0B",
+  "gradientFrom": "#1E3A8A",
+  "gradientTo": "#0F172A",
+  "gradientDirection": "to-br"
+}
+
+### 7.2 Update only the logo
+PATCH {{baseUrl}}/{{schoolId}}/logo
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "logoUrl": "https://example.com/new-logo.png"
+}
+
+### 7.3 Remove the logo
+PATCH {{baseUrl}}/{{schoolId}}/logo
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "logoUrl": null
+}
+
+### 7.4 Reset branding to default style
+PATCH {{baseUrl}}/{{schoolId}}/branding/reset
+Authorization: Bearer {{adminToken}}
+
+
+###############################################################################
+# 8. SCHOOL ADMIN: SCHOOL DETAILS
+###############################################################################
+
+### 8.1 Update school details (identity)
+PATCH {{baseUrl}}/{{schoolId}}/settings
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Greenfield Academy",
+  "shortName": "Greenfield",
+  "motto": "Learning for Life",
+  "registrationNumber": "REG-2024-001",
+  "knecCode": "KNEC-12345",
+  "establishedYear": 2005,
+  "principalName": "Mary Wanjiku"
+}
+
+### 8.2 Update contact & location
+PATCH {{baseUrl}}/{{schoolId}}/contact
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "address": "P.O. Box 123, Nairobi",
+  "county": "Nairobi",
+  "subCounty": "Westlands",
+  "phone": "+254712345678",
+  "alternativePhone": "+254733445566",
+  "email": "info@greenfield.ac.ke",
+  "website": "https://greenfield.ac.ke"
+}
+
+### 8.3 Update timezone & currency
+PATCH {{baseUrl}}/{{schoolId}}/localization
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "timezone": "Africa/Nairobi",
+  "currency": "KES"
+}
+
+### 8.4 Update school type & curriculum
+PATCH {{baseUrl}}/{{schoolId}}/curriculum
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "schoolType": "Secondary",
+  "curriculumType": "8-4-4"
+}
+
+### 8.5 Update principal
+PATCH {{baseUrl}}/{{schoolId}}/principal
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "principalName": "John Kamau"
+}
+
+### 8.6 Remove principal name
+PATCH {{baseUrl}}/{{schoolId}}/principal
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "principalName": null
+}
+
+
+###############################################################################
+# 9. SCHOOL ADMIN: ADVANCED SETTINGS & MODULES
+###############################################################################
+
+### 9.1 Get all settings (JSON)
+GET {{baseUrl}}/{{schoolId}}/settings-json
+Authorization: Bearer {{adminToken}}
+
+### 9.2 Save / merge settings (keeps the other settings)
+PATCH {{baseUrl}}/{{schoolId}}/settings-json
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "settings": {
+    "reportCardFooter": "Thank you for partnering with us.",
+    "showFeeBalanceOnPortal": true
+  }
+}
+
+### 9.3 Turn a module ON
+PATCH {{baseUrl}}/{{schoolId}}/modules
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "moduleKey": "library",
+  "enabled": true
+}
+
+### 9.4 Turn a module OFF
+PATCH {{baseUrl}}/{{schoolId}}/modules
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "moduleKey": "transport",
+  "enabled": false
+}
+
+
+###############################################################################
+# 10. SCHOOL ADMIN: REPORTS & CHECKS
+###############################################################################
+
+### 10.1 School statistics
+GET {{baseUrl}}/{{schoolId}}/stats
+Authorization: Bearer {{adminToken}}
+
+### 10.2 SMS credit balance
+GET {{baseUrl}}/{{schoolId}}/sms-credits
+Authorization: Bearer {{adminToken}}
+
+### 10.3 Can the school add 1 more student?
+GET {{baseUrl}}/{{schoolId}}/student-limit
+Authorization: Bearer {{adminToken}}
+
+### 10.4 Can the school add 50 more students?
+GET {{baseUrl}}/{{schoolId}}/student-limit?toAdd=50
+Authorization: Bearer {{adminToken}}
+
+
+###############################################################################
+# 11. ANY LOGGED-IN USER (read only)
+###############################################################################
+
+### 11.1 Get one school by ID
+GET {{baseUrl}}/{{schoolId}}
+Authorization: Bearer {{userToken}}
+
+### 11.2 Get all module on/off flags
+GET {{baseUrl}}/{{schoolId}}/modules
+Authorization: Bearer {{userToken}}
+
+### 11.3 Is one module on?
+GET {{baseUrl}}/{{schoolId}}/modules/{{moduleKey}}
+Authorization: Bearer {{userToken}}
+
+### 11.4 Can this school use the system right now?
+GET {{baseUrl}}/{{schoolId}}/access
+Authorization: Bearer {{userToken}}
+
+
+###############################################################################
+# 12. ERROR TESTS (these SHOULD fail, to check your messages)
+###############################################################################
+
+### 12.1 Bad school ID (expect 400)
+GET {{baseUrl}}/not-a-uuid
+Authorization: Bearer {{userToken}}
+
+### 12.2 School that does not exist (expect 404)
+GET {{baseUrl}}/99999999-9999-9999-9999-999999999999
+Authorization: Bearer {{userToken}}
+
+### 12.3 Reserved slug (expect 400)
+POST {{baseUrl}}
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "name": "Admin School",
+  "slug": "admin",
+  "schoolType": "Primary"
+}
+
+### 12.4 Bad color and bad email (expect 400 with a list of errors)
+PATCH {{baseUrl}}/{{schoolId}}/branding
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "primaryColor": "blue"
+}
+
+### 12.5 Empty body (expect 400)
+PATCH {{baseUrl}}/{{schoolId}}/contact
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{}
+
+### 12.6 Duplicate slug (expect 409). Run "Create school" 3.1 twice
+POST {{baseUrl}}
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "name": "Another Greenfield",
+  "slug": "greenfield-academy",
+  "schoolType": "Primary"
+}
+
+### 12.7 Not enough SMS credits (expect 400)
+POST {{baseUrl}}/{{schoolId}}/sms-credits/deduct
+Authorization: Bearer {{superToken}}
+Content-Type: application/json
+
+{
+  "amount": 999999
+}
+
+### 12.8 No token on a protected route (expect 401)
+GET {{baseUrl}}
+
+### 12.9 School Admin trying a Super Admin route (expect 403)
+DELETE {{baseUrl}}/{{schoolId}}
+Authorization: Bearer {{adminToken}}

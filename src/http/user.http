@@ -1,15 +1,18 @@
 @baseUrl = http://localhost:5000/api/users
 @token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImIzMGY2NjhhLTgyYTUtNGJlMi04ZTE2LTEyZTAxMjIzNzk4MiIsImVtYWlsIjoiYWRtaW5AcGxhdGZvcm0uY29tIiwicm9sZSI6InN1cGVyX2FkbWluIiwic2Nob29sSWQiOm51bGwsImlhdCI6MTc4OTA1MDgwNywiZXhwIjoxNzg5NjU1NjA3fQ.eJeoMOiHTlulIT9E7nb3_RtER6m_lVV10HX4ULLryY4
 @schoolId = b67a3e68-8de1-4938-a722-8b7e8f5c3c6a
-@userId = 167a75b7-f6f5-4038-8fcb-1bda5f02de08
-@classId = class-uuid-here
+@userId = b25f9bee-92c5-45fe-a7b7-a7951bbf1ed7@classId = class-uuid-here
 
-### 1. Get Users (Super Admin sees all across schools; Pagination, Filtering, Search)
+### 1. Get Users (Super Admin/Admin standard scoped query)
 GET {{baseUrl}}?page=1&limit=10&role=student&search=alex
 Cookie: token={{token}}
 
 ### 1b. Get Users Filtered by School (Optional for Super Admin to target specific school)
 GET {{baseUrl}}?schoolId={{schoolId}}&page=1&limit=10
+Cookie: token={{token}}
+
+### 1c. Get All Users System-Wide (Super Admin Dedicated Route - No school filter required)
+GET {{baseUrl}}/super-admin/all?page=1&limit=10
 Cookie: token={{token}}
 
 ### 3. Get User By Email
@@ -20,7 +23,7 @@ Cookie: token={{token}}
 GET {{baseUrl}}/email?email=annet@Ross.com&schoolId={{schoolId}}
 Cookie: token={{token}}
 
-### 4. Get Teachers By School (Super Admin can omit schoolId via query if service supports cross-school list, or pass schoolId)
+### 4. Get Teachers By School
 GET {{baseUrl}}/teachers?schoolId={{schoolId}}
 Cookie: token={{token}}
 
@@ -74,7 +77,7 @@ Cookie: token={{token}}
 Content-Type: application/json
 
 {
-  "isActive": true
+  "isActive":false
 }
 
 ### 14. Get Student Profile by User ID

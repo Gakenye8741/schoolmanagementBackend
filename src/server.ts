@@ -24,6 +24,9 @@ import homeworkRouter from './services/assignments/assignmeents.route';
 import communicationRouter from './services/communications/communication.route';
 import { apiLimiter, authLimiter } from './middleware/rate-limiter';
 import userRouter from './services/users/users.route';
+import academicStructureRouter from './services/classswithgradesandSubjects/academicStructure.route';
+import gradingScalesRouter from './services/GradingScales/gradingScales.route';
+
 
 dotenv.config();
 
@@ -56,11 +59,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(logger);
 
 // --- 3. RATE LIMITING ---
-app.use('/api/auth', authLimiter); // Stricter protection for login/signup
-app.use('/api/', apiLimiter);      // General protection for all other endpoints
+app.use('/api/auth', authLimiter);
+app.use('/api/', apiLimiter);
 
 // // --- 4. CACHING LAYER ---
-// // Apply response caching to GET requests globally (3 minutes default TTL)
 // app.use(cacheMiddleware(180));
 
 // --- 5. HEALTH CHECK ---
@@ -96,14 +98,15 @@ const apiRoutes = [
   { path: '/api/teacher-subjects', router: teacherSubjectRouter },
   { path: '/api/timetables', router: timetableRouter },
   { path: '/api/students', router: studentRouter },
-  { path: '/api/finance', router: financeRouter },
+  { path: '/api/fees', router: financeRouter },
   { path: '/api/expenses', router: expensesRouter },
   { path: '/api/exams', router: examsRouter },
   { path: '/api/attendance', router: attendanceRouter },
   { path: '/api/homework', router: homeworkRouter },
   { path: '/api/communication', router: communicationRouter },
   { path: '/api/users', router: userRouter },
-  
+  { path: '/api/academic-structure', router: academicStructureRouter },
+  { path: '/api/grading-scales', router: gradingScalesRouter },
 ];
 
 apiRoutes.forEach(({ path, router }) => app.use(path, router));

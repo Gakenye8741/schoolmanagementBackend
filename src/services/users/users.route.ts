@@ -8,6 +8,9 @@ const userRouter = Router();
 userRouter.get('/', adminOrTeacherAuth, userController.getUsersController);
 userRouter.post('/', adminAuth, userController.createUserController);
 
+// Super admin global system-wide users route (placed before /:id to prevent path shadowing)
+userRouter.get('/super-admin/all', adminAuth, userController.getAllUsersBySuperAdminController);
+
 userRouter.get('/email', adminAuth, userController.getUserByEmailController);
 userRouter.get('/teachers', adminOrTeacherAuth, userController.getTeachersBySchoolController);
 userRouter.get('/students', adminOrTeacherAuth, userController.getStudentsBySchoolIdController);

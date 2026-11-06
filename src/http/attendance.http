@@ -1,79 +1,350 @@
-@attendanceUrl = http://localhost:5000/api/attendance
-@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
-@teacherId = 90850ca5-9ed5-486c-a925-4108228c4904
-@studentId = 9d935960-9b1a-4748-9cb4-fb1f8c53eb20
-@attendanceRecordId = 739b9c40-3f41-4648-a59e-d2d8f53ee3ed
-@disciplinaryRecordId = 67491f12-3d7f-49d1-8b51-7f32425b958b
+@baseUrl = http://localhost:5000/api
+@attendanceUrl = {{baseUrl}}/attendance
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@classId = e8b7f870-a406-40cf-a83d-a0e67bc16f7e
+ @studentId = 238eb983-1d32-46b3-98e8-737741356055
+@studentId2 = 00000000-0000-0000-0000-000000000002
+@userId = 00000000-0000-0000-0000-000000000010
+@date = 2026-02-15
 
-### 1. Create Single Student Attendance
-POST {{attendanceUrl}}/attendance
-Authorization: Bearer {{schoolAdminToken}}
+### Note: With cookie-based authentication, ensure your HTTP client (like VS Code REST Client)
+### automatically manages and sends cookies received from login responses (e.g., via a cookie jar).
+
+# ================================================================
+# SETUP
+# ================================================================
+
+### 0.1 Login as admin (prerequisite for every protected request)
+# @name login
+POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+### 0.2 Verify attendance settings (sanity check)
+GET {{attendanceUrl}}/school/{{schoolId}}/settings
+
+
+# ================================================================
+# 1. MARKING
+# ================================================================
+
+### 1.1 Mark attendance for one student
+# @name markOne
+POST {{attendanceUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
   "studentId": "{{studentId}}",
-  "date": "2026-03-01",
+  "classId": "{{classId}}",
+  "date": "{{date}}",
   "status": "Present",
-  "markedBy": "{{teacherId}}"
+  "remarks": null
 }
 
-### 2. Bulk Create or Update Class Attendance
-POST {{attendanceUrl}}/attendance/bulk
-Authorization: Bearer {{schoolAdminToken}}
-Content-Type: application/json
-
-[
-  {
-    "studentId": "{{studentId}}",
-    "date": "2026-03-01",
-    "status": "Present",
-    "markedBy": "{{teacherId}}"
-  }
-]
-
-### 3. Get Attendance Record by ID
-GET {{attendanceUrl}}/attendance/{{attendanceRecordId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 4. Get Student Attendance History
-GET {{attendanceUrl}}/attendance/student/{{studentId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 5. Delete Attendance Record
-DELETE {{attendanceUrl}}/attendance/{{attendanceRecordId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 6. Create Disciplinary Record
-POST {{attendanceUrl}}/discipline
-Authorization: Bearer {{schoolAdminToken}}
+### 1.2 Re-mark same student (upsert) — should UPDATE, not error
+POST {{attendanceUrl}}
 Content-Type: application/json
 
 {
+  "schoolId": "{{schoolId}}",
   "studentId": "{{studentId}}",
-  "recordedBy": "{{teacherId}}",
-  "incidentType": "Warning",
-  "description": "Late arrival for morning assembly.",
-  "actionTaken": "Counseled by class teacher.",
-  "date": "2026-03-01T08:15:00Z"
+  "classId": "{{classId}}",
+  "date": "{{date}}",
+  "status": "Late",
+  "remarks": "Arrived 8:15am"
 }
 
-### 7. Get Disciplinary Record by ID
-GET {{attendanceUrl}}/discipline/{{disciplinaryRecordId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 8. Get All Student Disciplinary Records
-GET {{attendanceUrl}}/discipline/student/{{studentId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 9. Update Disciplinary Record
-PATCH {{attendanceUrl}}/discipline/{{disciplinaryRecordId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 1.3 Bulk mark the whole class
+# @name bulkMark
+POST {{attendanceUrl}}/bulk
 Content-Type: application/json
 
 {
-  "actionTaken": "Follow-up meeting held with parent and student."
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "date": "{{date}}",
+  "entries": [
+    { "studentId": "{{studentId}}", "status": "Present", "remarks": null },
+    { "studentId": "{{studentId2}}", "status": "Absent", "remarks": "Sick" }
+  ]
 }
 
-### 10. Delete Disciplinary Record
-DELETE {{attendanceUrl}}/discipline/{{disciplinaryRecordId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 1.4 Bulk upsert (idempotent)
+POST {{attendanceUrl}}/upsert
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "date": "{{date}}",
+  "entries": [
+    { "studentId": "{{studentId}}", "status": "Present", "remarks": "Corrected" }
+  ]
+}
+
+### 1.5 Update a single record
+### Prereq: @attendanceId from 1.1 response.attendance.id
+@attendanceId = 0042d47d-d3e2-4a09-b70c-19844f67e52f
+
+PUT {{attendanceUrl}}/{{attendanceId}}
+Content-Type: application/json
+
+{
+  "status": "Excused",
+  "remarks": "Medical appointment"
+}
+
+### 1.6 Auto-mark missing students as absent
+POST {{attendanceUrl}}/class/{{classId}}/date/{{date}}/auto-absent
+
+### 1.7 Copy attendance from one day to another
+POST {{attendanceUrl}}/copy
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "fromDate": "{{date}}",
+  "toDate": "2026-11-03"
+}
+
+### 1.8 Import attendance from CSV rows
+POST {{attendanceUrl}}/import
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "rows": [
+    {
+      "admissionNumber": "ADM-2027-001",
+      "date": "2026-11-04",
+      "status": "Present"
+    },
+    {
+      "admissionNumber": "ADM-2026-002",
+      "date": "2026-11-04",
+      "status": "Absent",
+      "remarks": "Family emergency"
+    }
+  ]
+}
+
+### 1.9 Delete an attendance record
+DELETE {{attendanceUrl}}/{{attendanceId}}
+
+
+# ================================================================
+# 2. READS
+# ================================================================
+
+### 2.1 Get attendance by ID
+### Prereq: @attendanceId from 1.1 response
+GET {{attendanceUrl}}/{{attendanceId}}
+
+### 2.2 Get one student's attendance on a date
+GET {{attendanceUrl}}/student/{{studentId}}/date/{{date}}
+
+### 2.3 Get student attendance history
+GET {{attendanceUrl}}/student/{{studentId}}/history
+
+### 2.4 Get student attendance history — filtered
+GET {{attendanceUrl}}/student/{{studentId}}/history?fromDate=2026-11-01&toDate=2026-11-30&status=Absent
+
+### 2.5 Get student attendance stats
+GET {{attendanceUrl}}/student/{{studentId}}/stats
+
+### 2.6 Get class attendance for a date
+GET {{attendanceUrl}}/class/{{classId}}/date/{{date}}
+
+### 2.7 Get class attendance summary
+GET {{attendanceUrl}}/class/{{classId}}/date/{{date}}/summary
+
+### 2.8 Get school attendance for a date
+GET {{attendanceUrl}}/school/{{schoolId}}/date/{{date}}
+
+### 2.9 Get monthly register for a class
+GET {{attendanceUrl}}/class/{{classId}}/register?year=2026&month=11
+
+### 2.10 List absentees for a date
+GET {{attendanceUrl}}/school/{{schoolId}}/absentees?date={{date}}
+
+### 2.11 List late arrivals for a date
+GET {{attendanceUrl}}/school/{{schoolId}}/late-arrivals?date={{date}}
+
+### 2.12 List chronic absentees (below 80%)
+GET {{attendanceUrl}}/school/{{schoolId}}/chronic-absentees?threshold=80
+
+### 2.13 List students not yet marked on a date
+GET {{attendanceUrl}}/class/{{classId}}/date/{{date}}/not-marked
+
+### 2.14 Get attendance audit trail
+GET {{attendanceUrl}}/class/{{classId}}/date/{{date}}/audit
+
+
+# ================================================================
+# 3. ANALYTICS
+# ================================================================
+
+### 3.1 Attendance rate for a class
+GET {{attendanceUrl}}/class/{{classId}}/rate
+
+### 3.2 Attendance rate — filtered date range
+GET {{attendanceUrl}}/class/{{classId}}/rate?fromDate=2026-11-01&toDate=2026-11-30
+
+### 3.3 Count attendance by status
+GET {{attendanceUrl}}/school/{{schoolId}}/by-status?date={{date}}
+
+### 3.4 Attendance trend for a class (last 30 days)
+GET {{attendanceUrl}}/class/{{classId}}/trend?days=30
+
+### 3.5 Attendance by gender
+GET {{attendanceUrl}}/school/{{schoolId}}/by-gender
+
+### 3.6 School-wide attendance stats
+GET {{attendanceUrl}}/school/{{schoolId}}/stats
+
+### 3.7 Compare this month vs last month
+GET {{attendanceUrl}}/school/{{schoolId}}/comparison
+
+
+# ================================================================
+# 4. HELPERS
+# ================================================================
+
+### 4.1 Validate a date (should succeed — valid date within term)
+GET {{attendanceUrl}}/school/{{schoolId}}/validate-date?date=2026-11-02
+
+### 4.2 Validate a future date (should fail with clear message)
+GET {{attendanceUrl}}/school/{{schoolId}}/validate-date?date=2099-12-31
+
+### 4.3 Check if a user can mark this class
+GET {{attendanceUrl}}/user/{{userId}}/class/{{classId}}/can-mark
+
+### 4.4 Get attendance settings
+GET {{attendanceUrl}}/school/{{schoolId}}/settings
+
+
+# ================================================================
+# 5. NEGATIVE / VALIDATION TESTS
+# ================================================================
+
+### 5.1 Mark with invalid status — expect 400
+POST {{attendanceUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "classId": "{{classId}}",
+  "date": "{{date}}",
+  "status": "Present-ish"
+}
+
+### 5.2 Mark with invalid UUID — expect 400
+POST {{attendanceUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "not-a-uuid",
+  "studentId": "{{studentId}}",
+  "classId": "{{classId}}",
+  "date": "{{date}}",
+  "status": "Present"
+}
+
+### 5.3 Mark with malformed date — expect 400
+POST {{attendanceUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "classId": "{{classId}}",
+  "date": "2026-13-45",
+  "status": "Present"
+}
+
+### 5.4 Mark a student not in the class — expect 400
+POST {{attendanceUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId2}}",
+  "classId": "00000000-0000-0000-0000-000000000099",
+  "date": "{{date}}",
+  "status": "Present"
+}
+
+### 5.5 Mark for a future date — expect 400
+POST {{attendanceUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "classId": "{{classId}}",
+  "date": "2099-12-31",
+  "status": "Present"
+}
+
+### 5.6 Bulk mark with duplicate students — expect 400
+POST {{attendanceUrl}}/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "date": "{{date}}",
+  "entries": [
+    { "studentId": "{{studentId}}", "status": "Present" },
+    { "studentId": "{{studentId}}", "status": "Absent" }
+  ]
+}
+
+### 5.7 Bulk mark with empty entries — expect 400
+POST {{attendanceUrl}}/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "date": "{{date}}",
+  "entries": []
+}
+
+### 5.8 Copy to the same date — expect 400
+POST {{attendanceUrl}}/copy
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "fromDate": "{{date}}",
+  "toDate": "{{date}}"
+}
+
+### 5.9 No auth — expect 401 (comment out login cookie or clear the jar first)
+POST {{attendanceUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "classId": "{{classId}}",
+  "date": "{{date}}",
+  "status": "Present"
+}
+
+### 5.10 Invalid attendance ID on read — expect 400
+GET {{attendanceUrl}}/not-a-uuid
+
+### 5.11 Chronic absentees with invalid threshold — expect 400
+GET {{attendanceUrl}}/school/{{schoolId}}/chronic-absentees?threshold=200

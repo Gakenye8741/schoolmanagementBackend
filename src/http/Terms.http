@@ -1,10 +1,17 @@
 @baseUrl = http://localhost:5000/api
-@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
-@termId = 43530ca6-bd8f-4cf1-b45e-288ce29750d0
-@windowId = c2ffbc99-9c0b-4ef8-bb6d-6bb9bd380c33
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+@windowId = c3604efe-33c5-477f-9732-e9587d7f646a
+@sourceTermId = 43530ca6-bd8f-4cf1-b45e-288ce29750d0
+@targetTermId = 00000000-0000-0000-0000-000000000000
 
-### Note: With cookie-based authentication, ensure your HTTP client (like VS Code REST Client) 
+### Note: With cookie-based authentication, ensure your HTTP client (like VS Code REST Client)
 ### automatically manages and sends cookies received from login responses (e.g., via a cookie jar).
+### Replace any @placeholder UUIDs below with real IDs captured from earlier responses.
+
+# ================================================================
+# ACADEMIC TERM — CRUD
+# ================================================================
 
 ### 1. Create a new academic term (Admin / School Admin)
 POST {{baseUrl}}/terms
@@ -21,7 +28,7 @@ Content-Type: application/json
   "isCurrentTerm": true
 }
 
-### 2. List all academic terms for a school (Any Authenticated User: Admin, Teacher, Student, Parent)
+### 2. List all academic terms for a school (Any Authenticated User)
 GET {{baseUrl}}/terms/school/{{schoolId}}
 # Authorization header removed; authentication handled automatically via HTTP cookies
 
@@ -39,11 +46,88 @@ Content-Type: application/json
 # Authorization header removed; authentication handled automatically via HTTP cookies
 
 {
-  "termName": "Term 1 (Revised)",
+  "termName": "Term 1 - Revised",
   "status": "active"
 }
 
-### 6. Create a term window/sub-period e.g. Mid-Term Break (Admin / School Admin)
+### 6. Delete an academic term (Super Admin only)
+DELETE {{baseUrl}}/terms/{{termId}}
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+
+# ================================================================
+# ACADEMIC TERM — ADVANCED READS
+# ================================================================
+
+### 7. Get a term with all its windows (Any Authenticated User)
+GET {{baseUrl}}/terms/{{termId}}/with-windows
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 8. List all academic terms for a school in a specific year (Any Authenticated User)
+GET {{baseUrl}}/terms/school/{{schoolId}}/by-year?academicYear=2026
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 9. List distinct academic years for a school (Any Authenticated User)
+GET {{baseUrl}}/terms/school/{{schoolId}}/years
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 10. Get current term with its windows (Any Authenticated User)
+GET {{baseUrl}}/terms/school/{{schoolId}}/current/with-windows
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 11. List terms by status (Any Authenticated User)
+GET {{baseUrl}}/terms/school/{{schoolId}}/by-status?status=active
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 12. Count academic terms for a school (Any Authenticated User)
+GET {{baseUrl}}/terms/school/{{schoolId}}/count
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 13. Look up a term by (year, name) (Any Authenticated User)
+GET {{baseUrl}}/terms/school/{{schoolId}}/lookup?academicYear=2026&termName=Term%201
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+
+# ================================================================
+# ACADEMIC TERM — STATE TRANSITIONS
+# ================================================================
+
+### 14. Set a term as the current active term for the school (Admin / School Admin)
+POST {{baseUrl}}/terms/school/{{schoolId}}/current
+Content-Type: application/json
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+{
+  "termId": "{{termId}}"
+}
+
+### 15. Clear the current active term for the school (Admin / School Admin)
+DELETE {{baseUrl}}/terms/school/{{schoolId}}/current
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 16. Change a term's status (Admin / School Admin)
+PATCH {{baseUrl}}/terms/{{termId}}/status
+Content-Type: application/json
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+{
+  "status": "completed"
+}
+
+### 17. Archive a term (Admin / School Admin)
+POST {{baseUrl}}/terms/{{termId}}/archive
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 18. Validate whether a term is ready to activate (Any Authenticated User)
+GET {{baseUrl}}/terms/{{termId}}/readiness
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+
+# ================================================================
+# TERM WINDOWS — CRUD
+# ================================================================
+
+### 19. Create a term window/sub-period e.g. Mid-Term Break (Admin / School Admin)
 POST {{baseUrl}}/terms/windows
 Content-Type: application/json
 # Authorization header removed; authentication handled automatically via HTTP cookies
@@ -56,14 +140,88 @@ Content-Type: application/json
   "endDate": "2026-02-24"
 }
 
-### 7. List all windows for an academic term (Any Authenticated User)
+### 20. Get a specific term window by ID (Any Authenticated User)
+GET {{baseUrl}}/terms/windows/{{windowId}}
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 21. List all windows for an academic term (Any Authenticated User)
 GET {{baseUrl}}/terms/{{termId}}/windows
 # Authorization header removed; authentication handled automatically via HTTP cookies
 
-### 8. Delete a term window (Admin / School Admin)
+### 22. List windows for a term filtered by type (Any Authenticated User)
+GET {{baseUrl}}/terms/{{termId}}/windows/by-type?windowType=mid_term_break
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 23. Count windows for a term (Any Authenticated User)
+GET {{baseUrl}}/terms/{{termId}}/windows/count
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 24. Update a term window (Admin / School Admin)
+PUT {{baseUrl}}/terms/windows/{{windowId}}
+Content-Type: application/json
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+{
+  "title": "Term 1 Mid-Term Break (Extended)",
+  "endDate": "2026-02-25"
+}
+
+### 25. Delete a term window (Admin / School Admin)
 DELETE {{baseUrl}}/terms/windows/{{windowId}}
 # Authorization header removed; authentication handled automatically via HTTP cookies
 
-### 9. Delete an academic term (Super Admin only)
-DELETE {{baseUrl}}/terms/{{termId}}
+### 26. Delete ALL windows for a term (Admin / School Admin)
+DELETE {{baseUrl}}/terms/{{termId}}/windows
 # Authorization header removed; authentication handled automatically via HTTP cookies
+
+
+# ================================================================
+# TERM WINDOWS — ADVANCED OPERATIONS
+# ================================================================
+
+### 27. Get all windows active on a specific date for a school (Any Authenticated User)
+GET {{baseUrl}}/terms/school/{{schoolId}}/windows/active?onDate=2026-02-22
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 28. Get upcoming windows for a school (next N days) (Any Authenticated User)
+GET {{baseUrl}}/terms/school/{{schoolId}}/windows/upcoming?daysAhead=30
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+### 29. Copy term windows from a source term to a target term (Admin / School Admin)
+POST {{baseUrl}}/terms/windows/copy
+Content-Type: application/json
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+{
+  "sourceTermId": "{{sourceTermId}}",
+  "targetTermId": "{{targetTermId}}"
+}
+
+### 30. Bulk create multiple term windows in one request (Admin / School Admin)
+POST {{baseUrl}}/terms/windows/bulk
+Content-Type: application/json
+# Authorization header removed; authentication handled automatically via HTTP cookies
+
+{
+  "termId": "{{termId}}",
+  "windows": [
+    {
+      "windowType": "cat_week",
+      "title": "CAT Week",
+      "startDate": "2026-02-10",
+      "endDate": "2026-02-14"
+    },
+    {
+      "windowType": "exam_week",
+      "title": "End of Term Exam Week",
+      "startDate": "2026-03-23",
+      "endDate": "2026-03-27"
+    },
+    {
+      "windowType": "registration_deadline",
+      "title": "Term 2 Registration Deadline",
+      "startDate": "2026-04-08",
+      "endDate": "2026-04-08"
+    }
+  ]
+}
