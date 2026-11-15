@@ -1,0 +1,453 @@
+@baseUrl = http://localhost:5000/api
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+@subjectId = 59027619-15f8-411b-9646-cbbd2fac02bb
+@teacherId = 5acbe2d6-4e97-4f4c-889d-67fb4d7107d2
+@strandId = PASTE_A_STRAND_ID_HERE
+@subStrandId = PASTE_A_SUB_STRAND_ID_HERE
+
+### Login as teacher
+# @name loginTeacher
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "jane.wanjiku@school.test",
+  "password": "TempPass123!",
+  "schoolId": "{{schoolId}}"
+}
+@teacherToken = {{loginTeacher.response.body.$.data.tokens.accessToken}}
+
+### Login as principal (for approve / reject)
+# @name loginPrincipal
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+@principalToken = {{loginPrincipal.response.body.$.data.tokens.accessToken}}
+
+# ================================================================
+# 1. SCHEME OF WORK — Draft → Submitted → Approved
+# ================================================================
+
+### 1.1 Create a scheme for Grade 7A Maths, Term 1
+# @name scheme
+POST {{baseUrl}}/schools/{{schoolId}}/schemes
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "title": "Grade 7A Mathematics — Term 1 Scheme of Work"
+}
+
+### 1.2 Bulk-create schemes for the whole term at once
+POST {{baseUrl}}/schools/{{schoolId}}/schemes/bulk
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "schemes": [
+    {
+      "classId": "{{classId}}",
+      "subjectId": "{{subjectId}}",
+      "title": "Grade 7A Maths — Term 1"
+    }
+  ]
+}
+
+### 1.3 Get the scheme (with all entries)
+GET {{baseUrl}}/schemes/{{scheme.response.body.$.scheme.id}}
+Authorization: Bearer {{teacherToken}}
+
+### 1.4 List all schemes for the teacher
+GET {{baseUrl}}/teachers/{{teacherId}}/schemes
+Authorization: Bearer {{teacherToken}}
+
+### 1.5 List all schemes in the school (filterable)
+GET {{baseUrl}}/schools/{{schoolId}}/schemes?termId={{termId}}
+Authorization: Bearer {{principalToken}}
+
+### 1.6 List only Draft schemes
+GET {{baseUrl}}/schools/{{schoolId}}/schemes?status=Draft
+Authorization: Bearer {{principalToken}}
+
+# ================================================================
+# 2. ADD ENTRIES (Week × Lesson rows)
+# ================================================================
+
+### 2.1 Add one entry (Week 1, Lesson 1)
+# @name entry1
+POST {{baseUrl}}/entries
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schemeId": "{{scheme.response.body.$.scheme.id}}",
+  "weekNumber": 1,
+  "lessonNumber": 1,
+  "topic": "Introduction to Fractions",
+  "objectives": "By the end of the lesson, learners should identify fractions in real life",
+  "learningActivities": "Group work, class discussion",
+  "resources": "Fraction kit, chalkboard",
+  "assessmentMethods": "Oral questions, group observation"
+}
+
+### 2.2 Bulk-create the whole week's entries
+POST {{baseUrl}}/schemes/{{scheme.response.body.$.scheme.id}}/entries/bulk
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schemeId": "{{scheme.response.body.$.scheme.id}}",
+  "entries": [
+    {
+      "weekNumber": 1,
+      "lessonNumber": 2,
+      "topic": "Types of Fractions",
+      "objectives": "Classify fractions as proper, improper or mixed"
+    },
+    {
+      "weekNumber": 1,
+      "lessonNumber": 3,
+      "topic": "Converting Improper to Mixed",
+      "objectives": "Convert between improper fractions and mixed numbers"
+    },
+    {
+      "weekNumber": 2,
+      "lessonNumber": 1,
+      "topic": "Adding Fractions (same denominator)",
+      "objectives": "Add fractions with like denominators"
+    },
+    {
+      "weekNumber": 2,
+      "lessonNumber": 2,
+      "topic": "Adding Fractions (different denominators)",
+      "objectives": "Find LCD and add fractions with unlike denominators"
+    }
+  ]
+}
+
+### 2.3 List all entries for the scheme
+GET {{baseUrl}}/schemes/{{scheme.response.body.$.scheme.id}}/entries
+Authorization: Bearer {{teacherToken}}
+
+### 2.4 Update one entry
+PATCH {{baseUrl}}/entries/{{entry1.response.body.$.entry.id}}
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "objectives": "By the end of the lesson, learners should identify and write fractions in real-life contexts",
+  "resources": "Fraction kit, chalkboard, textbook pages 12-15"
+}
+
+# ================================================================
+# 3. SUBMIT → APPROVE
+# ================================================================
+
+### 3.1 Teacher submits the scheme
+POST {{baseUrl}}/schemes/{{scheme.response.body.$.scheme.id}}/submit
+Authorization: Bearer {{teacherToken}}
+
+### 3.2 Principal sees it in the approval queue
+GET {{baseUrl}}/schools/{{schoolId}}/schemes/pending
+Authorization: Bearer {{principalToken}}
+
+### 3.3 Principal approves
+POST {{baseUrl}}/schemes/{{scheme.response.body.$.scheme.id}}/approve
+Authorization: Bearer {{principalToken}}
+
+### 3.4 Scheme is now Approved and locked
+GET {{baseUrl}}/schemes/{{scheme.response.body.$.scheme.id}}
+Authorization: Bearer {{teacherToken}}
+
+# ================================================================
+# 4. MARK COVERAGE (only works when Approved)
+# ================================================================
+
+### 4.1 Teacher marks entry covered (with today's date)
+POST {{baseUrl}}/entries/{{entry1.response.body.$.entry.id}}/mark-covered
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{}
+
+### 4.2 Teacher marks entry covered with a specific date
+POST {{baseUrl}}/entries/{{entry1.response.body.$.entry.id}}/mark-covered
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "coveredOn": "2026-11-15"
+}
+
+### 4.3 See the coverage summary
+GET {{baseUrl}}/schemes/{{scheme.response.body.$.scheme.id}}/coverage
+Authorization: Bearer {{teacherToken}}
+
+# ================================================================
+# 5. REJECT flow (another scheme)
+# ================================================================
+
+### 5.1 Create a second scheme (Draft)
+# @name scheme2
+POST {{baseUrl}}/schools/{{schoolId}}/schemes
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "title": "Grade 7A Maths — Term 2 (draft, will be rejected)"
+}
+
+### 5.2 Add one entry
+POST {{baseUrl}}/entries
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schemeId": "{{scheme2.response.body.$.scheme.id}}",
+  "weekNumber": 1,
+  "lessonNumber": 1,
+  "topic": "Placeholder"
+}
+
+### 5.3 Submit
+POST {{baseUrl}}/schemes/{{scheme2.response.body.$.scheme.id}}/submit
+Authorization: Bearer {{teacherToken}}
+
+### 5.4 Principal rejects with comments
+POST {{baseUrl}}/schemes/{{scheme2.response.body.$.scheme.id}}/reject
+Content-Type: application/json
+Authorization: Bearer {{principalToken}}
+
+{
+  "reviewComments": "Objectives are too broad. Please break them down per lesson and add specific assessment methods."
+}
+
+### 5.5 Teacher can now edit the rejected scheme
+PATCH {{baseUrl}}/schemes/{{scheme2.response.body.$.scheme.id}}
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "title": "Grade 7A Maths — Term 2 (revised)"
+}
+
+# ================================================================
+# 6. LESSON PLAN — full flow
+# ================================================================
+
+### 6.1 Create a lesson plan linked to a scheme entry
+# @name plan
+POST {{baseUrl}}/schools/{{schoolId}}/lesson-plans
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "schemeEntryId": "{{entry1.response.body.$.entry.id}}",
+  "lessonDate": "2026-11-15",
+  "topic": "Introduction to Fractions",
+  "objectives": "Identify fractions in real-life contexts",
+  "introduction": "Show a pizza cut into slices, ask learners what each slice represents",
+  "development": "Define numerator and denominator. Show examples on the board. Group practice.",
+  "conclusion": "Summary — ask learners to write one fraction from their daily life",
+  "resources": "Fraction kit, textbook pages 12-15",
+  "assessment": "Oral questions; exit ticket with 3 fractions to identify"
+}
+
+### 6.2 Bulk-create plans for the whole week
+POST {{baseUrl}}/schools/{{schoolId}}/lesson-plans/bulk
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "plans": [
+    {
+      "classId": "{{classId}}",
+      "subjectId": "{{subjectId}}",
+      "lessonDate": "2026-11-16",
+      "topic": "Types of Fractions",
+      "objectives": "Classify proper, improper, mixed"
+    },
+    {
+      "classId": "{{classId}}",
+      "subjectId": "{{subjectId}}",
+      "lessonDate": "2026-11-17",
+      "topic": "Converting Improper to Mixed",
+      "objectives": "Convert correctly"
+    }
+  ]
+}
+
+### 6.3 List my lesson plans
+GET {{baseUrl}}/teachers/{{teacherId}}/lesson-plans
+Authorization: Bearer {{teacherToken}}
+
+### 6.4 List lesson plans for a date range
+GET {{baseUrl}}/teachers/{{teacherId}}/lesson-plans?from=2026-11-01&to=2026-11-30
+Authorization: Bearer {{teacherToken}}
+
+### 6.5 List lesson plans for a class
+GET {{baseUrl}}/classes/lesson-plans?classId={{classId}}&from=2026-11-01&to=2026-11-30
+Authorization: Bearer {{teacherToken}}
+
+### 6.6 Get one lesson plan (with scheme entry + strand info)
+GET {{baseUrl}}/lesson-plans/{{plan.response.body.$.plan.id}}
+Authorization: Bearer {{teacherToken}}
+
+### 6.7 Submit for approval
+POST {{baseUrl}}/lesson-plans/{{plan.response.body.$.plan.id}}/submit
+Authorization: Bearer {{teacherToken}}
+
+### 6.8 Principal approves
+POST {{baseUrl}}/lesson-plans/{{plan.response.body.$.plan.id}}/approve
+Authorization: Bearer {{principalToken}}
+
+### 6.9 After teaching, teacher adds reflection
+POST {{baseUrl}}/lesson-plans/{{plan.response.body.$.plan.id}}/reflection
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "reflection": "The pizza example worked well. Some learners struggled with numerator vs denominator — need a follow-up drill next lesson. Overall the class grasped the concept."
+}
+
+# ================================================================
+# 7. NEGATIVE TESTS
+# ================================================================
+
+### 7.1 Submit a scheme with NO entries → 400
+# (scheme2 has entries, so create a fresh empty one)
+# @name emptyScheme
+POST {{baseUrl}}/schools/{{schoolId}}/schemes
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "title": "Empty Scheme"
+}
+
+POST {{baseUrl}}/schemes/{{emptyScheme.response.body.$.scheme.id}}/submit
+Authorization: Bearer {{teacherToken}}
+
+### 7.2 Edit an APPROVED scheme → 400
+PATCH {{baseUrl}}/schemes/{{scheme.response.body.$.scheme.id}}
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "title": "Should not work"
+}
+
+### 7.3 Add an entry to an APPROVED scheme → 400
+POST {{baseUrl}}/entries
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schemeId": "{{scheme.response.body.$.scheme.id}}",
+  "weekNumber": 3,
+  "lessonNumber": 1,
+  "topic": "Should not work"
+}
+
+### 7.4 Mark coverage on a DRAFT scheme → 400
+# (creates a fresh draft, then tries to mark)
+# @name draftScheme
+POST {{baseUrl}}/schools/{{schoolId}}/schemes
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "title": "Draft Scheme for Coverage Test"
+}
+
+# @name draftEntry
+POST {{baseUrl}}/entries
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schemeId": "{{draftScheme.response.body.$.scheme.id}}",
+  "weekNumber": 1,
+  "lessonNumber": 1,
+  "topic": "Test"
+}
+
+POST {{baseUrl}}/entries/{{draftEntry.response.body.$.entry.id}}/mark-covered
+Authorization: Bearer {{teacherToken}}
+
+### 7.5 Duplicate scheme (same term/class/subject) → 409/400
+POST {{baseUrl}}/schools/{{schoolId}}/schemes
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "title": "Duplicate"
+}
+
+### 7.6 Bulk-create entries with duplicate week+lesson → partial success
+POST {{baseUrl}}/schemes/{{draftScheme.response.body.$.scheme.id}}/entries/bulk
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schemeId": "{{draftScheme.response.body.$.scheme.id}}",
+  "entries": [
+    { "weekNumber": 1, "lessonNumber": 1, "topic": "Dup 1" },
+    { "weekNumber": 1, "lessonNumber": 2, "topic": "New" }
+  ]
+}
+
+### 7.7 Reject an unsubmitted scheme → 400
+# (only Submitted can be rejected)
+POST {{baseUrl}}/schemes/{{draftScheme.response.body.$.scheme.id}}/reject
+Content-Type: application/json
+Authorization: Bearer {{principalToken}}
+
+{
+  "reviewComments": "Should not work — this scheme is Draft"
+}
+
+### 7.8 Approve a scheme you don't own (wrong status) → 400
+POST {{baseUrl}}/schemes/{{scheme2.response.body.$.scheme.id}}/approve
+Authorization: Bearer {{principalToken}}
+
+# (scheme2 was rejected, so approve fails)
+
+### 7.9 Submit a scheme you don't own → 400
+POST {{baseUrl}}/schemes/{{scheme.response.body.$.scheme.id}}/submit
+Authorization: Bearer {{principalToken}}
+
+# (principal isn't the teacher, so submit fails)

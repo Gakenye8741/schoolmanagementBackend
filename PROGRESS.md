@@ -1,6 +1,6 @@
 # School Management System — Progress Log
 
-_Last updated: Exams module complete_
+_Last updated: Homework module complete_
 
 ---
 
@@ -16,17 +16,32 @@ _Last updated: Exams module complete_
 | Attendance | ✅ Complete |
 | Fees | ✅ Complete |
 | **Grading Scales** | ✅ **Complete** |
-| **Exams** (termExams + examSchedules + examResults) | ✅ **Complete — just landed** |
-| Report cards | ⏳ Next (needs exams + attendance — both done) |
+| **Exams** (termExams + examSchedules + examResults) | ✅ **Complete** |
+| **Timetables** (periods + timetables) | ✅ **Complete** |
+| **Report Cards** (reportCards) | ✅ **Complete — just landed** |
+| **Notifications** (notifications + smsLogs) | ✅ **Complete — just landed** |
+| **Homework** (homeworkAssignments + homeworkSubmissions) | ✅ **Complete — just landed** |
 | CBC assessments | ⏳ Blocked on curriculum strands |
-| Notifications / SMS | ⏳ Ready to start |
-| Homework | ⏳ Ready to start |
+| Schemes of work / lesson plans | ⏳ Ready to start |
+| Communications (announcements / DMs / meetings) | ⏳ Ready to start |
+| Events & co-curricular | ⏳ Ready to start |
 | Library / inventory | ⏳ Ready to start |
-| Timetables | ⏳ Needs period FK fix |
+| Transport | ⏳ Ready to start |
+| Boarding | ⏳ Ready to start |
+| Discipline | ⏳ Ready to start |
+| Platform (imports / webhooks / audit) | ⏳ Ready to start |
 | Everything else | ⏳ Not started |
 
-**You can now demo a full academic cycle end-to-end:**
-school admin sets up term → registers students → teacher marks attendance → bursar invoices fees → teacher enters exam marks → **system auto-computes grades from a grading scale** → admin publishes results → parents see positions and mean scores.
+**You can now demo the FULL academic cycle end-to-end:**
+school admin sets up term → registers students → builds class timetable →
+teacher marks attendance → bursar invoices fees → teacher enters exam marks →
+**system auto-computes grades from a grading scale** → admin publishes results →
+**admin generates report cards → parent gets notified by SMS → parent reads the card** →
+teacher assigns homework → student submits → teacher grades → parent notified.
+
+**You can also demo the timetable lifecycle:**
+set the school day → allocate periods → build a class's week with double lessons →
+assign teachers and rooms → run conflict checks → publish the master grid.
 
 ---
 
@@ -118,7 +133,7 @@ school admin sets up term → registers students → teacher marks attendance �
 - Service returns business-rule errors (`date outside term`, `not the class teacher`) that the controller surfaces verbatim
 - Term boundary enforced at write time — no attendance in a school with no current term
 
-### 7. Fees (`/api/fees`) — 🆕
+### 7. Fees (`/api/fees`)
 
 **60 services covering:**
 
@@ -161,7 +176,7 @@ school admin sets up term → registers students → teacher marks attendance �
 - `balanceRemaining` on `feeTransactions` is a **snapshot for receipts only** — never the source of truth
 - The `openInvoicesIdx` partial index drives the arrears dashboard
 
-### 8. Grading Scales (`/api/grading-scales`) — 🆕
+### 8. Grading Scales (`/api/grading-scales`)
 
 **18 services covering:**
 
@@ -194,7 +209,7 @@ school admin sets up term → registers students → teacher marks attendance �
 - Templates are seeded **without auto-defaulting** — admin picks the default explicitly after seeing all options
 - Band overlap enforced by the service **and** by a DB check constraint (`grading_band_range_chk`: `maxScore >= minScore`)
 
-### 9. Exams (`/api/exams`) — 🆕
+### 9. Exams (`/api/exams`)
 
 **35 services covering:**
 
@@ -239,40 +254,93 @@ school admin sets up term → registers students → teacher marks attendance �
 - **Batched computations** — no `await` inside loops; each grade bucket updated in one query
 - Falls back to **school default grading scale** if exam has no explicit `gradingScaleId`
 
----
+### 10. Timetables (`/api/timetables`)
 
-## 🎯 Design decisions worth remembering
+**67 services covering:**
 
-### Registration is split
+**Periods (`periods`) — 14 services**
+- CRUD — create, bulk create, get by id, get by number, list all, list teaching (`isBreak = false`), list breaks
+- Update, delete (blocked if any slot uses the period)
+- Reorder — bulk renumber by `orderedIds`
+- Validation — overlap detection + period-number gaps
+- First / last period of the day
+- Active period lookup by current time (dashboards / bell)
+- Count periods per school
 
-| Who | Endpoint | Rows created |
-|---|---|---|
-| Teacher / bursar / parent | `POST /auth/register/member` | `users` only |
-| Student | `POST /students` | `users` + `students` atomically |
+**Timetable slots (`timetables`) — 53 services**
 
-**Never** register a student through `/auth/register/member`. It's rejected at the schema layer with a clear message directing to `/students`.
+*Create / modify*
+- Create single, bulk create for a class, bulk create for the whole school
+- Get slot by id, update slot, delete slot
+- Move slot (day + period), swap two slots atomically
+- Assign teacher (with conflict guard), assign room (with conflict guard)
+- Copy timetable from one class to another
+- Clone timetable within a school (validates both classes belong to the school)
+- Bulk delete by ids, bulk update by ids
 
-### ID rule of thumb
+*Reads & views*
+- Class weekly grid (periods × days, breaks shown)
+- Class timetable for one day
+- Class timetable for today
+- Current / next lesson for a class
+- Teacher full timetable, teacher timetable for one day
+- Teacher weekly view (grouped by day)
+- Current lesson for a teacher
+- Upcoming lessons for a teacher (next N minutes)
+- Slot by class + day + period
+- List all slots for a school
+- Slots by subject / by teacher / by room
+- All unassigned-teacher slots, all no-room slots
+- All free slots for a class
+- All classes with no timetable
+- School-wide grid (all classes × all days)
+- Flat export (for CSV / PDF printing)
 
-| Use case | Use this ID |
-|---|---|
-| Auth, login, password, sessions | `users.id` |
-| Class, attendance, fees, exams, guardians, enrollment | `students.id` |
+*Analytics*
+- Timetable coverage stats (expected vs actual, percentage)
+- Subject allocation (hours per subject per week)
+- Class workload (lessons per subject per week)
+- Class slots per day
+- Teacher workload (lessons per week)
+- Teacher availability matrix (busy / free grid)
+- Least-loaded teacher for a subject (allocation helper)
 
-Never mix them. `/api/students/user/:userId` maps user → student if needed.
+*Conflicts & validation*
+- Check teacher conflict at day / period
+- Check class conflict at day / period
+- Check room conflict at day / period
+- Validate whole school timetable (all teacher + room double-bookings in one call)
 
-### Validators live in the controller
+*Deletes*
+- Delete one slot
+- Delete one slot by class + day + period
+- Clear a class's timetable
+- Clear one day across the school
+- Clear the whole school timetable
+- Delete a period (blocked if in use)
 
-| File | Contains | Imports validator? |
-|---|---|---|
-| `<module>.validator.ts` | Zod schemas only | — |
-| `<module>.controller.ts` | `safeParse` → service call | ✅ |
-| `<module>.service.ts` | Business logic | ❌ |
+**HTTP test flow (`### HOW A KENYAN SCHOOL BUILDS A TIMETABLE`)** — 62 requests in 10 steps, tested end-to-end:
+1. Set the school day (13 periods, 3 breaks)
+2. Adjust the day / reorder periods
+3. Build one class's week (45 slots Mon–Fri with double lessons for Maths/Sciences)
+4. Parallel streams (bulk school create + clone)
+5. Class views (grid, today, current, next, free slots, workload)
+6. Teacher views + assign teachers/rooms
+7. Conflict checks (validate / teacher / class / room)
+8. Master timetable (grid, export, subject/teacher/room lookups, active period)
+9. Changes during the term (move, swap, edit)
+10. Cleanup (delete one, delete many, clear class/day/school, delete period)
 
-Business rules (term bounds, permissions, student verification, fee resolution, grade computation) live in the **service**, not in the schema. Schema = shape + format. Service = rules.
+**Design choices:**
+- **Unique index** on `(classId, dayOfWeek, periodId)` — one lesson per class per slot, DB-enforced
+- **Teacher conflict check** at write time + dedicated check endpoint — a teacher cannot be double-booked
+- **Room conflict check** at write time + dedicated check endpoint — a room cannot be double-booked
+- **Period overlap validation** — periods must be non-overlapping and contiguous (gap warnings don't block)
+- **Auto-day resolution** — "today" / "current lesson" derive `Weekday` from `new Date()` (Sunday → Monday mapping fixed)
+- **Batched fetches** — no `await` inside loops; timetable grids build slot lookups once per request
+- **Atomic swap** — uses a temp sentinel period inside a transaction to dodge the unique-index collision during the two-way swap
+- **School scoping everywhere** — every write re-asserts class / period / subject / teacher all belong to the same `schoolId`
+- **`updatedAt`** touched on every mutation (reorder, move, assign, swap)
+- **`periodId` FK uses `RESTRICT`** — a period used by a slot cannot be deleted; `teacherId` uses `SET NULL` so a deleted teacher does not orphan slots
 
-### Envelope is consistent
-
-Every service returns:
-```ts
-{ success: boolean, message: string, <entity>?: T, count?: number, issues?: string[] }
+**FK chain**

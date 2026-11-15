@@ -1,59 +1,699 @@
-@baseUrl = http://localhost:5000/api/timetables
-@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
-@parentOrStudentToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjU3OGEzMjUwLTVhZjQtNGExMS04YzFiLTYzNGExZGFjZjhkYiIsImVtYWlsIjoicGFyZW50QGdtYWlsLmNvbSIsInJvbGUiOiJwYXJlbnQiLCJzY2hvb2xJZCI6IjkxOGEyN2YzLTIzMjEtNGY2OS1hMTVjLTljNjFmOWY0ZjgxOCIsImlhdCI6MTc4ODQ2NTQxNCwiZXhwIjoxNzg5MDcwMjE0fQ.t4mjrNVFC3K0gtoZsd-QCMaddG62UgCXsrtsdxyLJ-c
-@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
-@mathSubjectId = aa47c717-0dd1-4ee6-b0f5-e8e7448f552f
-@englishSubjectId = 2fd7c6ff-142e-449c-b7ad-aa5cc78edf72
-@teacherId = 90850ca5-9ed5-486c-a925-4108228c4904
-@gradeLevel = Form 1
-@stream = North
+### ================================================================
+### HOW A KENYAN SCHOOL BUILDS A TIMETABLE - TESTED STEP BY STEP
+### (VS Code "REST Client").  Run the sections IN ORDER, top to bottom.
+###
+### Typical process, as done by the Deputy Principal (Academics) / Director of Studies:
+###   A. Fix the school day: lesson length, tea break, lunch, games/clubs
+###   B. Allocate lessons per subject per week (CBE Junior School / 8-4-4 Forms)
+###   C. Allocate teachers to subjects and classes (TSC staffing + BOM teachers)
+###   D. Build the master timetable class by class (Mon-Fri), using DOUBLE lessons
+###      for Maths / Sciences / practicals, and keeping heavy subjects in the morning
+###   E. Check for clashes (teacher / room), then publish class + teacher timetables
+###   F. Adjust during the term (swap lessons, cover for absent teachers)
+###
+### 🆕 NEW IN THIS VERSION:
+###   * STEP 1c  — one-click seed of the standard Kenyan school day
+###   * STEP 3.0 — automatic whole-school generator (preview + commit)
+###   * STEP 6m  — view teachers qualified for a subject (sorted by load)
+###   * STEP 7j  — per-class coverage report
+###   * STEP 7k  — detailed conflicts with names resolved
+###   * STEP 9e  — duplicate a whole day (holiday make-up, reshuffle)
+###   * STEP 9f  — auto-assign missing teachers across the whole school
+###   * STEP 10l — nuclear reset (wipes ALL slots + periods)
+### ================================================================
 
-### 1. Generate Global School-Wide Timetable with Multiple Subject Quotas (School Admin)
-POST {{baseUrl}}/generate-global
-Authorization: Bearer {{schoolAdminToken}}
-Content-Type: application/json
+@baseUrl = http://localhost:5000/api/timetables
+@contentType = application/json
+
+# Sign in first, then paste the JWT here (school_admin / principal / deputy_principal
+# for admin routes; any user for the lookup routes).
+@token = PASTE_YOUR_JWT_HERE
+
+# ---- Your real IDs ----------------------------------------------------
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+@studentId = 7b004352-5dc1-438a-933b-21be82c43ab8
+@teacherId = 5acbe2d6-4e97-4f4c-889d-67fb4d7107d2
+@subjectId = 59027619-15f8-411b-9646-cbbd2fac02bb
+
+# A second class / stream (e.g. "Grade 7 West") - replace with a real class id
+@targetClassId = 22222222-2222-4222-8222-222222222223
+
+# ---- Subjects (replace each with the real subject id from your DB) -------
+# Defaults to your one real subject so the requests run today.
+# CBE Junior School (Grade 7-9) learning areas:
+@ENG = {{subjectId}}
+@KIS = {{subjectId}}
+@MAT = {{subjectId}}
+@SCI = {{subjectId}}
+@SST = {{subjectId}}
+@AGN = {{subjectId}}
+@PTS = {{subjectId}}
+@CRE = {{subjectId}}
+@CAS = {{subjectId}}
+
+# ---- Teachers per subject (replace with the real teacher ids) -------------
+@tENG = {{teacherId}}
+@tKIS = {{teacherId}}
+@tMAT = {{teacherId}}
+@tSCI = {{teacherId}}
+@tSST = {{teacherId}}
+@tAGN = {{teacherId}}
+@tPTS = {{teacherId}}
+@tCRE = {{teacherId}}
+@tCAS = {{teacherId}}
+
+# ---- Period ids: filled in automatically after step 2 --------------------
+# L1..L9 = the nine teaching lessons of the day, in order.
+@L1 = {{listTeaching.response.body.$.periods[0].id}}
+@L2 = {{listTeaching.response.body.$.periods[1].id}}
+@L3 = {{listTeaching.response.body.$.periods[2].id}}
+@L4 = {{listTeaching.response.body.$.periods[3].id}}
+@L5 = {{listTeaching.response.body.$.periods[4].id}}
+@L6 = {{listTeaching.response.body.$.periods[5].id}}
+@L7 = {{listTeaching.response.body.$.periods[6].id}}
+@L8 = {{listTeaching.response.body.$.periods[7].id}}
+@L9 = {{listTeaching.response.body.$.periods[8].id}}
+
+# ---- Slot ids: filled in automatically after step 5 ----------------------
+@slotId = {{mondaySlots.response.body.$.slots[0].id}}
+@slotId2 = {{mondaySlots.response.body.$.slots[1].id}}
+
+# ---- Handy values --------------------------------------------------------
+@day = Monday
+@room = Science Lab
+
+
+################################################################
+# STEP 1 - SET THE SCHOOL DAY (periods)
+# Typical Kenyan day: devotion 7:40, 40-min lessons from 8:00,
+# tea 10:00-10:20, lunch 1:00-2:00 pm, games/clubs after the last lesson.
+# Breaks are isBreak:true so they never get a lesson.
+# NOTE: run this on a school with NO periods yet (period numbers are unique
+# per school, and a period used by a slot cannot be deleted).
+################################################################
+
+### 1. Bulk create the school day (admin)
+# @name bulkPeriods
+POST {{baseUrl}}/periods/bulk
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
 
 {
   "schoolId": "{{schoolId}}",
-  "classes": [
-    { "gradeLevel": "{{gradeLevel}}", "stream": "{{stream}}" },
-    { "gradeLevel": "{{gradeLevel}}", "stream": "South" }
-  ],
-  "subjectQuotas": [
-    { "subjectId": "{{mathSubjectId}}", "weeklyTarget": 4 },
-    { "subjectId": "{{englishSubjectId}}", "weeklyTarget": 3 }
-  ],
-  "daysOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-  "periodsPerDay": 7
+  "periods": [
+    { "periodNumber": 1,  "name": "Morning Assembly / Devotion", "startTime": "07:40", "endTime": "08:00", "isBreak": true  },
+    { "periodNumber": 2,  "name": "Lesson 1",                    "startTime": "08:00", "endTime": "08:40", "isBreak": false },
+    { "periodNumber": 3,  "name": "Lesson 2",                    "startTime": "08:40", "endTime": "09:20", "isBreak": false },
+    { "periodNumber": 4,  "name": "Lesson 3",                    "startTime": "09:20", "endTime": "10:00", "isBreak": false },
+    { "periodNumber": 5,  "name": "Tea Break",                   "startTime": "10:00", "endTime": "10:20", "isBreak": true  },
+    { "periodNumber": 6,  "name": "Lesson 4",                    "startTime": "10:20", "endTime": "11:00", "isBreak": false },
+    { "periodNumber": 7,  "name": "Lesson 5",                    "startTime": "11:00", "endTime": "11:40", "isBreak": false },
+    { "periodNumber": 8,  "name": "Lesson 6",                    "startTime": "11:40", "endTime": "12:20", "isBreak": false },
+    { "periodNumber": 9,  "name": "Lesson 7",                    "startTime": "12:20", "endTime": "13:00", "isBreak": false },
+    { "periodNumber": 10, "name": "Lunch Break",                 "startTime": "13:00", "endTime": "14:00", "isBreak": true  },
+    { "periodNumber": 11, "name": "Lesson 8",                    "startTime": "14:00", "endTime": "14:40", "isBreak": false },
+    { "periodNumber": 12, "name": "Lesson 9",                    "startTime": "14:40", "endTime": "15:20", "isBreak": false },
+    { "periodNumber": 13, "name": "Games / Clubs & Societies",   "startTime": "15:20", "endTime": "16:20", "isBreak": true  }
+  ]
 }
 
-### 2. Upsert Single Timetable Slot for English (School Admin)
-POST {{baseUrl}}/slot
-Authorization: Bearer {{schoolAdminToken}}
-Content-Type: application/json
+### 1b. Check the day has no overlaps or gaps (admin)
+GET {{baseUrl}}/schools/{{schoolId}}/periods/validate
+Authorization: Bearer {{token}}
+
+### 1c. 🆕 ONE-CLICK: seed the standard Kenyan school day (admin)
+# Same 13 periods as step 1, without needing to paste the body.
+# Fails with 400 if the school already has periods — use step 10l to reset first.
+POST {{baseUrl}}/schools/{{schoolId}}/periods/seed-standard
+Authorization: Bearer {{token}}
+
+### 2. List teaching periods - this captures L1..L9 for the steps below
+# @name listTeaching
+GET {{baseUrl}}/schools/{{schoolId}}/periods/teaching
+Authorization: Bearer {{token}}
+
+### 2b. See just the breaks (tea, lunch, assembly, games)
+GET {{baseUrl}}/schools/{{schoolId}}/periods/breaks
+Authorization: Bearer {{token}}
+
+### 2c. Full day in order
+GET {{baseUrl}}/schools/{{schoolId}}/periods
+Authorization: Bearer {{token}}
+
+
+################################################################
+# STEP 2 - ADJUST THE DAY IF NEEDED
+# e.g. shorten Friday? (here: change the tea break to 20 -> 30 minutes)
+# Replace PERIOD_ID with the Tea Break id from request 2c.
+################################################################
+
+### 2d. Update a period (admin)
+PATCH {{baseUrl}}/periods/PERIOD_ID
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "name": "Tea Break",
+  "startTime": "10:00",
+  "endTime": "10:30"
+}
+
+### 2e. Reorder periods by id (admin) - only if you need to renumber
+PUT {{baseUrl}}/schools/{{schoolId}}/periods/reorder
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "orderedIds": ["{{L1}}", "{{L2}}", "{{L3}}"]
+}
+
+
+################################################################
+# STEP 3 - BUILD A CLASS'S WEEK (Mon-Fri, 9 lessons a day)
+#
+# TWO APPROACHES — pick one:
+#   • MANUAL (3a)   → paste all 45 slots yourself. Full control.
+#   • AUTO   (3.0)  → let the generator decide. Best for whole schools.
+#
+# Sample Grade 7 pattern: Maths/English/Kiswahili/Science early,
+# DOUBLE lessons (same subject in 2 consecutive lessons) for Maths,
+# Integrated Science, Agriculture & Nutrition, Pre-Technical Studies and
+# Creative Arts & Sports. Change the pattern to match your school's
+# lessons-per-week allocation.
+################################################################
+
+### 3.0a. 🆕 PREVIEW what the generator would produce (admin)
+# Dry-run — nothing is written to the DB. Returns slots + per-class/per-teacher stats.
+# Useful for tuning allocations before you commit.
+POST {{baseUrl}}/schools/{{schoolId}}/timetable/generate/preview
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
 
 {
   "schoolId": "{{schoolId}}",
-  "gradeLevel": "{{gradeLevel}}",
-  "stream": "{{stream}}",
-  "dayOfWeek": "Monday",
-  "periodNumber": 2,
-  "subjectId": "{{englishSubjectId}}",
+  "classIds": ["{{classId}}"],
+  "allocations": [
+    { "classId": "{{classId}}", "subjectId": "{{MAT}}", "lessonsPerWeek": 6, "requiresDouble": true,  "preferredTeacherIds": [] },
+    { "classId": "{{classId}}", "subjectId": "{{ENG}}", "lessonsPerWeek": 5, "requiresDouble": false, "preferredTeacherIds": ["{{tENG}}"] },
+    { "classId": "{{classId}}", "subjectId": "{{KIS}}", "lessonsPerWeek": 4, "requiresDouble": false, "preferredTeacherIds": [] },
+    { "classId": "{{classId}}", "subjectId": "{{SCI}}", "lessonsPerWeek": 4, "requiresDouble": true,  "preferredTeacherIds": [] },
+    { "classId": "{{classId}}", "subjectId": "{{SST}}", "lessonsPerWeek": 3, "requiresDouble": false, "preferredTeacherIds": [] },
+    { "classId": "{{classId}}", "subjectId": "{{CRE}}", "lessonsPerWeek": 2, "requiresDouble": false, "preferredTeacherIds": [] }
+  ],
+  "config": {
+    "maxPerTeacherPerDay": 6,
+    "maxPerTeacherPerWeek": 28,
+    "morningHeavySubjectIds": ["{{MAT}}", "{{ENG}}", "{{SCI}}"],
+    "seed": 42
+  }
+}
+
+### 3.0b. 🆕 GENERATE the whole school timetable (admin) — COMMIT to DB
+# Clears existing slots for the listed classes, then creates new ones.
+# Use options.dryRun=true to preview instead of writing.
+# Use options.clearExisting=false to add WITHOUT clearing old slots.
+POST {{baseUrl}}/schools/{{schoolId}}/timetable/generate
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "classIds": ["{{classId}}", "{{targetClassId}}"],
+  "allocations": [
+    { "classId": "{{classId}}",         "subjectId": "{{MAT}}", "lessonsPerWeek": 6, "requiresDouble": true,  "preferredTeacherIds": [] },
+    { "classId": "{{classId}}",         "subjectId": "{{ENG}}", "lessonsPerWeek": 5, "requiresDouble": false, "preferredTeacherIds": [] },
+    { "classId": "{{classId}}",         "subjectId": "{{KIS}}", "lessonsPerWeek": 4, "requiresDouble": false, "preferredTeacherIds": [] },
+    { "classId": "{{classId}}",         "subjectId": "{{SCI}}", "lessonsPerWeek": 4, "requiresDouble": true,  "preferredTeacherIds": [] },
+    { "classId": "{{classId}}",         "subjectId": "{{SST}}", "lessonsPerWeek": 3, "requiresDouble": false, "preferredTeacherIds": [] },
+    { "classId": "{{classId}}",         "subjectId": "{{CRE}}", "lessonsPerWeek": 2, "requiresDouble": false, "preferredTeacherIds": [] },
+    { "classId": "{{targetClassId}}",   "subjectId": "{{MAT}}", "lessonsPerWeek": 6, "requiresDouble": true,  "preferredTeacherIds": [] },
+    { "classId": "{{targetClassId}}",   "subjectId": "{{ENG}}", "lessonsPerWeek": 5, "requiresDouble": false, "preferredTeacherIds": [] }
+  ],
+  "config": {
+    "maxPerTeacherPerDay": 6,
+    "maxPerTeacherPerWeek": 28,
+    "morningHeavySubjectIds": ["{{MAT}}", "{{ENG}}", "{{SCI}}"],
+    "seed": 42
+  },
+  "options": {
+    "clearExisting": true,
+    "dryRun": false
+  }
+}
+
+### 3. Bulk create the class timetable MANUALLY (admin) - 45 slots
+# Use this if you want full control, or if the generator left gaps.
+POST {{baseUrl}}/slots/bulk/class
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "slots": [
+    { "dayOfWeek": "Monday", "periodId": "{{L1}}", "subjectId": "{{MAT}}", "teacherId": "{{tMAT}}" },
+    { "dayOfWeek": "Monday", "periodId": "{{L2}}", "subjectId": "{{MAT}}", "teacherId": "{{tMAT}}" },
+    { "dayOfWeek": "Monday", "periodId": "{{L3}}", "subjectId": "{{ENG}}", "teacherId": "{{tENG}}" },
+    { "dayOfWeek": "Monday", "periodId": "{{L4}}", "subjectId": "{{KIS}}", "teacherId": "{{tKIS}}" },
+    { "dayOfWeek": "Monday", "periodId": "{{L5}}", "subjectId": "{{SCI}}", "teacherId": "{{tSCI}}", "room": "Science Lab" },
+    { "dayOfWeek": "Monday", "periodId": "{{L6}}", "subjectId": "{{SCI}}", "teacherId": "{{tSCI}}", "room": "Science Lab" },
+    { "dayOfWeek": "Monday", "periodId": "{{L7}}", "subjectId": "{{SST}}", "teacherId": "{{tSST}}" },
+    { "dayOfWeek": "Monday", "periodId": "{{L8}}", "subjectId": "{{CRE}}", "teacherId": "{{tCRE}}" },
+    { "dayOfWeek": "Monday", "periodId": "{{L9}}", "subjectId": "{{CAS}}", "teacherId": "{{tCAS}}" },
+
+    { "dayOfWeek": "Tuesday", "periodId": "{{L1}}", "subjectId": "{{ENG}}", "teacherId": "{{tENG}}" },
+    { "dayOfWeek": "Tuesday", "periodId": "{{L2}}", "subjectId": "{{KIS}}", "teacherId": "{{tKIS}}" },
+    { "dayOfWeek": "Tuesday", "periodId": "{{L3}}", "subjectId": "{{MAT}}", "teacherId": "{{tMAT}}" },
+    { "dayOfWeek": "Tuesday", "periodId": "{{L4}}", "subjectId": "{{SCI}}", "teacherId": "{{tSCI}}", "room": "Science Lab" },
+    { "dayOfWeek": "Tuesday", "periodId": "{{L5}}", "subjectId": "{{SCI}}", "teacherId": "{{tSCI}}", "room": "Science Lab" },
+    { "dayOfWeek": "Tuesday", "periodId": "{{L6}}", "subjectId": "{{AGN}}", "teacherId": "{{tAGN}}" },
+    { "dayOfWeek": "Tuesday", "periodId": "{{L7}}", "subjectId": "{{AGN}}", "teacherId": "{{tAGN}}" },
+    { "dayOfWeek": "Tuesday", "periodId": "{{L8}}", "subjectId": "{{PTS}}", "teacherId": "{{tPTS}}", "room": "Workshop" },
+    { "dayOfWeek": "Tuesday", "periodId": "{{L9}}", "subjectId": "{{PTS}}", "teacherId": "{{tPTS}}", "room": "Workshop" },
+
+    { "dayOfWeek": "Wednesday", "periodId": "{{L1}}", "subjectId": "{{MAT}}", "teacherId": "{{tMAT}}" },
+    { "dayOfWeek": "Wednesday", "periodId": "{{L2}}", "subjectId": "{{ENG}}", "teacherId": "{{tENG}}" },
+    { "dayOfWeek": "Wednesday", "periodId": "{{L3}}", "subjectId": "{{KIS}}", "teacherId": "{{tKIS}}" },
+    { "dayOfWeek": "Wednesday", "periodId": "{{L4}}", "subjectId": "{{SST}}", "teacherId": "{{tSST}}" },
+    { "dayOfWeek": "Wednesday", "periodId": "{{L5}}", "subjectId": "{{SST}}", "teacherId": "{{tSST}}" },
+    { "dayOfWeek": "Wednesday", "periodId": "{{L6}}", "subjectId": "{{CRE}}", "teacherId": "{{tCRE}}" },
+    { "dayOfWeek": "Wednesday", "periodId": "{{L7}}", "subjectId": "{{ENG}}", "teacherId": "{{tENG}}" },
+    { "dayOfWeek": "Wednesday", "periodId": "{{L8}}", "subjectId": "{{CAS}}", "teacherId": "{{tCAS}}", "room": "Music Room" },
+    { "dayOfWeek": "Wednesday", "periodId": "{{L9}}", "subjectId": "{{CAS}}", "teacherId": "{{tCAS}}", "room": "Music Room" },
+
+    { "dayOfWeek": "Thursday", "periodId": "{{L1}}", "subjectId": "{{SCI}}", "teacherId": "{{tSCI}}", "room": "Science Lab" },
+    { "dayOfWeek": "Thursday", "periodId": "{{L2}}", "subjectId": "{{SCI}}", "teacherId": "{{tSCI}}", "room": "Science Lab" },
+    { "dayOfWeek": "Thursday", "periodId": "{{L3}}", "subjectId": "{{ENG}}", "teacherId": "{{tENG}}" },
+    { "dayOfWeek": "Thursday", "periodId": "{{L4}}", "subjectId": "{{MAT}}", "teacherId": "{{tMAT}}" },
+    { "dayOfWeek": "Thursday", "periodId": "{{L5}}", "subjectId": "{{KIS}}", "teacherId": "{{tKIS}}" },
+    { "dayOfWeek": "Thursday", "periodId": "{{L6}}", "subjectId": "{{PTS}}", "teacherId": "{{tPTS}}", "room": "Workshop" },
+    { "dayOfWeek": "Thursday", "periodId": "{{L7}}", "subjectId": "{{PTS}}", "teacherId": "{{tPTS}}", "room": "Workshop" },
+    { "dayOfWeek": "Thursday", "periodId": "{{L8}}", "subjectId": "{{AGN}}", "teacherId": "{{tAGN}}" },
+    { "dayOfWeek": "Thursday", "periodId": "{{L9}}", "subjectId": "{{SST}}", "teacherId": "{{tSST}}" },
+
+    { "dayOfWeek": "Friday", "periodId": "{{L1}}", "subjectId": "{{ENG}}", "teacherId": "{{tENG}}" },
+    { "dayOfWeek": "Friday", "periodId": "{{L2}}", "subjectId": "{{KIS}}", "teacherId": "{{tKIS}}" },
+    { "dayOfWeek": "Friday", "periodId": "{{L3}}", "subjectId": "{{MAT}}", "teacherId": "{{tMAT}}" },
+    { "dayOfWeek": "Friday", "periodId": "{{L4}}", "subjectId": "{{CRE}}", "teacherId": "{{tCRE}}" },
+    { "dayOfWeek": "Friday", "periodId": "{{L5}}", "subjectId": "{{SCI}}", "teacherId": "{{tSCI}}", "room": "Science Lab" },
+    { "dayOfWeek": "Friday", "periodId": "{{L6}}", "subjectId": "{{AGN}}", "teacherId": "{{tAGN}}" },
+    { "dayOfWeek": "Friday", "periodId": "{{L7}}", "subjectId": "{{CAS}}", "teacherId": "{{tCAS}}" },
+    { "dayOfWeek": "Friday", "periodId": "{{L8}}", "subjectId": "{{SST}}", "teacherId": "{{tSST}}" },
+    { "dayOfWeek": "Friday", "periodId": "{{L9}}", "subjectId": "{{ENG}}", "teacherId": "{{tENG}}" }
+  ]
+}
+
+### 3b. Add or fix ONE lesson (admin)
+POST {{baseUrl}}/slots
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "dayOfWeek": "Saturday",
+  "periodId": "{{L1}}",
+  "subjectId": "{{MAT}}",
+  "teacherId": "{{tMAT}}",
+  "room": null
+}
+
+
+################################################################
+# STEP 4 - PARALLEL STREAMS (e.g. Grade 7 East + West)
+# Create the second stream WITHOUT teachers first; assign teachers in step 6
+# so no teacher is booked in two classes at the same time.
+################################################################
+
+### 4. Bulk create slots for several classes at once (admin)
+POST {{baseUrl}}/slots/bulk/school
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "slots": [
+    { "classId": "{{targetClassId}}", "dayOfWeek": "Monday", "periodId": "{{L1}}", "subjectId": "{{ENG}}" },
+    { "classId": "{{targetClassId}}", "dayOfWeek": "Monday", "periodId": "{{L2}}", "subjectId": "{{KIS}}" },
+    { "classId": "{{targetClassId}}", "dayOfWeek": "Monday", "periodId": "{{L3}}", "subjectId": "{{MAT}}" },
+    { "classId": "{{targetClassId}}", "dayOfWeek": "Monday", "periodId": "{{L4}}", "subjectId": "{{MAT}}" },
+    { "classId": "{{targetClassId}}", "dayOfWeek": "Monday", "periodId": "{{L5}}", "subjectId": "{{SST}}" }
+  ]
+}
+
+### 4b. Clone class timetable into another stream (admin)
+# WARNING: this copies the teachers too, so the same teacher will be booked
+# in both streams at the same time. Run 7 (validate) afterwards and fix clashes.
+POST {{baseUrl}}/slots/clone
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "sourceClassId": "{{classId}}",
+  "targetClassId": "{{targetClassId}}"
+}
+
+
+################################################################
+# STEP 5 - VIEW IT (what the class, the students and parents see)
+################################################################
+
+### 5. Full weekly timetable (grid, includes breaks)
+GET {{baseUrl}}/classes/{{classId}}/timetable
+Authorization: Bearer {{token}}
+
+### 5b. Monday only - this captures slotId / slotId2 for the steps below
+# @name mondaySlots
+GET {{baseUrl}}/classes/{{classId}}/timetable/day/Monday
+Authorization: Bearer {{token}}
+
+### 5c. Today's timetable
+GET {{baseUrl}}/classes/{{classId}}/timetable/today
+Authorization: Bearer {{token}}
+
+### 5d. What is the class doing right now?
+GET {{baseUrl}}/classes/{{classId}}/timetable/current
+Authorization: Bearer {{token}}
+
+### 5e. What is next?
+GET {{baseUrl}}/classes/{{classId}}/timetable/next
+Authorization: Bearer {{token}}
+
+### 5f. One specific lesson (Monday, Lesson 1)
+GET {{baseUrl}}/classes/{{classId}}/timetable/day/{{day}}/period/{{L1}}
+Authorization: Bearer {{token}}
+
+### 5g. Empty lessons still to fill
+GET {{baseUrl}}/classes/{{classId}}/timetable/free-slots
+Authorization: Bearer {{token}}
+
+### 5h. Lessons per day
+GET {{baseUrl}}/classes/{{classId}}/timetable/slots-per-day
+Authorization: Bearer {{token}}
+
+### 5i. Class workload (lessons per subject per week)
+GET {{baseUrl}}/classes/{{classId}}/workload
+Authorization: Bearer {{token}}
+
+### 5j. Lesson count
+GET {{baseUrl}}/classes/{{classId}}/timetable/count
+Authorization: Bearer {{token}}
+
+
+################################################################
+# STEP 6 - TEACHERS (each teacher gets a personal timetable)
+################################################################
+
+### 6. Teacher's full timetable
+GET {{baseUrl}}/teachers/{{teacherId}}/timetable
+Authorization: Bearer {{token}}
+
+### 6b. Teacher's week grouped by day
+GET {{baseUrl}}/teachers/{{teacherId}}/timetable/weekly
+Authorization: Bearer {{token}}
+
+### 6c. Teacher's lessons for a day
+GET {{baseUrl}}/teachers/{{teacherId}}/timetable/day/{{day}}
+Authorization: Bearer {{token}}
+
+### 6d. Teacher is in class right now?
+GET {{baseUrl}}/teachers/{{teacherId}}/timetable/current
+Authorization: Bearer {{token}}
+
+### 6e. Lessons starting in the next 30 minutes
+GET {{baseUrl}}/teachers/{{teacherId}}/timetable/upcoming?withinMinutes=30
+Authorization: Bearer {{token}}
+
+### 6f. Free periods (use to find a cover teacher)
+GET {{baseUrl}}/teachers/{{teacherId}}/free-periods?dayOfWeek={{day}}
+Authorization: Bearer {{token}}
+
+### 6g. Teacher's workload (lessons per week)
+GET {{baseUrl}}/teachers/{{teacherId}}/workload
+Authorization: Bearer {{token}}
+
+### 6h. Availability matrix
+GET {{baseUrl}}/teachers/{{teacherId}}/availability
+Authorization: Bearer {{token}}
+
+### 6i. Who has the lightest load for a subject? (for allocating a new class)
+GET {{baseUrl}}/schools/{{schoolId}}/subjects/{{MAT}}/least-loaded-teacher
+Authorization: Bearer {{token}}
+
+### 6j. Assign a teacher to one lesson (use null to unassign)
+PATCH {{baseUrl}}/slots/{{slotId}}/teacher
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
   "teacherId": "{{teacherId}}"
 }
 
-### 3. Audit School-Wide Timetable Clashes (School Admin)
-GET {{baseUrl}}/audit/{{schoolId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 6k. Assign a teacher to many lessons at once (e.g. the whole Grade 7 West Maths)
+PATCH {{baseUrl}}/slots/bulk-update
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
 
-### 4. Get Class Stream Timetable (Authenticated Parent/Student)
-GET {{baseUrl}}/class/{{schoolId}}/{{gradeLevel}}/{{stream}}
-Authorization: Bearer {{parentOrStudentToken}}
+{
+  "schoolId": "{{schoolId}}",
+  "slotIds": ["{{slotId}}", "{{slotId2}}"],
+  "teacherId": "{{teacherId}}"
+}
 
-### 5. Get Teacher Timetable (Authenticated User)
-GET {{baseUrl}}/teacher/{{teacherId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 6l. Assign a room (Science Lab, Computer Lab, Workshop, Music Room...)
+PATCH {{baseUrl}}/slots/{{slotId}}/room
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
 
-### 6. Clear Entire Class Timetable (School Admin)
-DELETE {{baseUrl}}/class/{{schoolId}}/{{gradeLevel}}/{{stream}}
-Authorization: Bearer {{schoolAdminToken}}
+{
+  "room": "{{room}}"
+}
+
+### 6m. 🆕 WHO is qualified to teach this subject? (sorted by current load)
+# Uses teacher_subjects links. Great for picking preferredTeacherIds before
+# running the generator, or for finding a cover teacher.
+GET {{baseUrl}}/schools/{{schoolId}}/subjects/{{MAT}}/preferred-teachers
+Authorization: Bearer {{token}}
+
+
+################################################################
+# STEP 7 - CLASH CHECKS (before the timetable is published)
+################################################################
+
+### 7. Validate the WHOLE school timetable - teacher and room double-bookings
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/validate
+Authorization: Bearer {{token}}
+
+### 7b. Is this teacher free at this time?
+GET {{baseUrl}}/teachers/{{teacherId}}/conflicts?dayOfWeek={{day}}&periodId={{L1}}
+Authorization: Bearer {{token}}
+
+### 7c. Is this room free at this time?
+GET {{baseUrl}}/schools/{{schoolId}}/rooms/conflicts?room={{room}}&dayOfWeek={{day}}&periodId={{L5}}
+Authorization: Bearer {{token}}
+
+### 7d. Is the class already booked at this time?
+GET {{baseUrl}}/classes/{{classId}}/conflicts?dayOfWeek={{day}}&periodId={{L1}}
+Authorization: Bearer {{token}}
+
+### 7e. Classes that still have NO timetable
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/empty-classes
+Authorization: Bearer {{token}}
+
+### 7f. Lessons still without a teacher
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/unassigned-teachers
+Authorization: Bearer {{token}}
+
+### 7g. Lessons still without a room
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/without-room
+Authorization: Bearer {{token}}
+
+### 7h. Coverage (how full is the master timetable)
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/coverage
+Authorization: Bearer {{token}}
+
+### 7i. Lessons and hours per subject (compare with your allocation)
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/subject-allocation
+Authorization: Bearer {{token}}
+
+### 7j. 🆕 PER-CLASS coverage report (sorted by emptiness first)
+# Returns filled/capacity/missing/percentage for EVERY class.
+# Use this to spot the classes the generator left half-empty.
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/per-class-coverage
+Authorization: Bearer {{token}}
+
+### 7k. 🆕 DETAILED conflicts (with class/subject/teacher/period names resolved)
+# Same as 7 but every slot has { class.stream, subject.name, teacher.name, period.name }
+# instead of raw UUIDs. Perfect for staff-meeting reports.
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/conflicts-detailed
+Authorization: Bearer {{token}}
+
+
+################################################################
+# STEP 8 - MASTER TIMETABLE (staff room wall chart / print / PDF)
+################################################################
+
+### 8. Master grid - every class, every day
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/grid
+Authorization: Bearer {{token}}
+
+### 8b. Flat export (for CSV / PDF printing)
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/export
+Authorization: Bearer {{token}}
+
+### 8c. Every lesson in the school
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/slots
+Authorization: Bearer {{token}}
+
+### 8d. Everywhere one subject is taught
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/subject/{{MAT}}
+Authorization: Bearer {{token}}
+
+### 8e. Everything one teacher teaches
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/teacher/{{teacherId}}
+Authorization: Bearer {{token}}
+
+### 8f. Everything happening in one room
+GET {{baseUrl}}/schools/{{schoolId}}/timetable/room/{{room}}
+Authorization: Bearer {{token}}
+
+### 8g. Which period is on right now (dashboards / bell)?
+GET {{baseUrl}}/schools/{{schoolId}}/periods/active
+Authorization: Bearer {{token}}
+
+
+################################################################
+# STEP 9 - CHANGES DURING THE TERM
+################################################################
+
+### 9. Move a lesson to another day/period (destination must be empty)
+PATCH {{baseUrl}}/slots/{{slotId}}/move
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "dayOfWeek": "Thursday",
+  "periodId": "{{L9}}"
+}
+
+### 9b. Swap two lessons of the same class
+POST {{baseUrl}}/slots/swap
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "slotAId": "{{slotId}}",
+  "slotBId": "{{slotId2}}"
+}
+
+### 9c. Change a lesson (subject / teacher / room)
+PATCH {{baseUrl}}/slots/{{slotId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "subjectId": "{{MAT}}",
+  "room": "Room 1"
+}
+
+### 9d. Look at one lesson
+GET {{baseUrl}}/slots/{{slotId}}
+Authorization: Bearer {{token}}
+
+### 9e. 🆕 DUPLICATE a whole day (holiday make-up, reshuffle)
+# Copies every slot from `sourceDay` into `targetDay` (skips existing slots).
+# Omit `classIds` to duplicate across the WHOLE school.
+# Omit a per-class set by passing e.g. "classIds": ["{{classId}}"].
+POST {{baseUrl}}/schools/{{schoolId}}/timetable/duplicate-day
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "sourceDay": "Monday",
+  "targetDay": "Saturday",
+  "classIds": ["{{classId}}", "{{targetClassId}}"]
+}
+
+### 9f. 🆕 AUTO-ASSIGN missing teachers across the whole school
+# For every slot with teacherId=null, picks the least-loaded teacher who is:
+#   • qualified for that subject (if preferSubjectQualified=true)
+#   • free on that day/period
+#   • under maxPerTeacherPerDay / maxPerTeacherPerWeek
+PATCH {{baseUrl}}/schools/{{schoolId}}/timetable/auto-assign-teachers
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "maxPerTeacherPerDay": 6,
+  "maxPerTeacherPerWeek": 28,
+  "preferSubjectQualified": true
+}
+
+
+################################################################
+# STEP 10 - CLEAN UP (destructive - run only on test data!)
+# Typical use: start of a new term, or re-doing a timetable.
+################################################################
+
+### 10. Delete one lesson
+DELETE {{baseUrl}}/slots/{{slotId}}
+Authorization: Bearer {{token}}
+
+### 10b. Delete one lesson by class + day + period
+DELETE {{baseUrl}}/classes/{{classId}}/timetable/day/{{day}}/period/{{L1}}
+Authorization: Bearer {{token}}
+
+### 10c. Delete several lessons
+POST {{baseUrl}}/slots/bulk-delete
+Content-Type: {{contentType}}
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "slotIds": ["{{slotId}}", "{{slotId2}}"]
+}
+
+### 10d. Clear one class's timetable
+DELETE {{baseUrl}}/classes/{{classId}}/timetable
+Authorization: Bearer {{token}}
+
+### 10e. Clear a whole day across the school (e.g. a public holiday)
+DELETE {{baseUrl}}/schools/{{schoolId}}/timetable/day/{{day}}
+Authorization: Bearer {{token}}
+
+### 10f. Clear the entire school timetable (new term)
+DELETE {{baseUrl}}/schools/{{schoolId}}/timetable
+Authorization: Bearer {{token}}
+
+### 10g. Delete a period (only works if no lesson uses it)
+DELETE {{baseUrl}}/periods/{{L1}}
+Authorization: Bearer {{token}}
+
+### 10h. Count periods
+GET {{baseUrl}}/schools/{{schoolId}}/periods/count
+Authorization: Bearer {{token}}
+
+### 10i. First / last period of the day
+GET {{baseUrl}}/schools/{{schoolId}}/periods/first
+Authorization: Bearer {{token}}
+
+###
+GET {{baseUrl}}/schools/{{schoolId}}/periods/last
+Authorization: Bearer {{token}}
+
+### 10j. Look up a period by its number (e.g. 2 = Lesson 1)
+GET {{baseUrl}}/schools/{{schoolId}}/periods/number/2
+Authorization: Bearer {{token}}
+
+### 10k. Look up a period by id
+GET {{baseUrl}}/periods/{{L1}}
+Authorization: Bearer {{token}}
+
+### 10l. 🆕 NUCLEAR RESET — wipes ALL slots AND periods for the school
+# Requires ?confirm=true — otherwise returns 400 with a warning message.
+# Use before re-seeding the school day from scratch (see step 1c).
+DELETE {{baseUrl}}/schools/{{schoolId}}/timetable/reset?confirm=true
+Authorization: Bearer {{token}}

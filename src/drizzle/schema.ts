@@ -564,20 +564,19 @@ export const timetables = pgTable(
     schoolId: uuid("school_id").references(() => schools.id, { onDelete: "cascade" }).notNull(),
     classId: uuid("class_id").references(() => classes.id, { onDelete: "cascade" }).notNull(),
     dayOfWeek: weekdayEnum("day_of_week").notNull(),
-    periodNumber: integer("period_number").notNull(),
-    startTime: time("start_time"),
-    endTime: time("end_time"),
+    periodId: uuid("period_id").references(() => periods.id, { onDelete: "restrict" }).notNull(),
     subjectId: uuid("subject_id").references(() => subjects.id, { onDelete: "cascade" }).notNull(),
     teacherId: uuid("teacher_id").references(() => users.id, { onDelete: "set null" }),
     room: varchar("room", { length: 50 }),
     updatedAt: updatedAt(),
   },
   (table) => ({
-    classSlotIdx: uniqueIndex("timetable_class_slot_idx").on(table.classId, table.dayOfWeek, table.periodNumber),
-    // "What is teacher X teaching today?" (teacher_id first, then day)
-    teacherDayIdx: index("timetable_teacher_day_idx").on(table.teacherId, table.dayOfWeek, table.periodNumber),
+    classSlotIdx: uniqueIndex("timetable_class_slot_idx").on(table.classId, table.dayOfWeek, table.periodId),
+    teacherDayIdx: index("timetable_teacher_day_idx").on(table.teacherId, table.dayOfWeek, table.periodId),
     schoolIdx: index("timetable_school_idx").on(table.schoolId),
     subjectIdx: index("timetable_subject_idx").on(table.subjectId),
+    periodIdx: index("timetable_period_idx").on(table.periodId),
+    roomIdx: index("timetable_room_idx").on(table.schoolId, table.dayOfWeek, table.periodId, table.room),
   })
 );
 

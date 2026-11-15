@@ -11,21 +11,28 @@ import { logger } from './middleware/logger';
 import authRouter from './auth/auth.route';
 import router from './services/schools/schools.route';
 import termsRouter from './services/academicTerms/terms.route';
-import classRouter from './services/classes/classes.route';
-import subjectRouter from './services/subjects/subjects.route';
-import teacherSubjectRouter from './services/subjectTeachers/subjectTeacher.route';
+
 import timetableRouter from './services/timetables/timetable.route';
 import studentRouter from './services/students/student.route';
 import financeRouter from './services/finance/finance.route';
 import expensesRouter from './services/expenses/expense.route';
 import examsRouter from './services/exams/exams.route';
 import attendanceRouter from './services/attendance/attendance.route';
-import homeworkRouter from './services/assignments/assignmeents.route';
-import communicationRouter from './services/communications/communication.route';
+
+
 import { apiLimiter, authLimiter } from './middleware/rate-limiter';
-import userRouter from './services/users/users.route';
+
 import academicStructureRouter from './services/classswithgradesandSubjects/academicStructure.route';
 import gradingScalesRouter from './services/GradingScales/gradingScales.route';
+import reportCardsRouter from './services/reportCards/reportCards.route';
+import notificationsRouter from './services/notifications/notifications.route';
+import homeworkRouter from './services/Homework/homework.route';
+import disciplineRouter from './services/discipline/discipline.route';
+import subscriptionsRouter from './services/subscriptions/subscriptions.routes';
+import eventsRouter from './services/events/events.route';
+import curriculumRouter from './services/curriculum/curriculum.routes';
+import usersRouter from './services/users/users.route';
+import planningRouter from './services/lessonPlans/lessonPlans.route';
 
 
 dotenv.config();
@@ -91,11 +98,22 @@ app.get('/', (_req: Request, res: Response) => {
 // --- 6. API ROUTE REGISTRATION ---
 const apiRoutes = [
   { path: '/api/auth', router: authRouter },
+
+  // ── Users router — FIRST ────────────────────────────────────
+  // Mounted at /api (not /api/users) so it can claim 4 top-level paths:
+  //   /schools/:schoolId/users/...   (school admin managing own users)
+  //   /users/:userId/...             (single-user operations)
+  //   /admin/users/...               (super admin system-wide)
+  //   /sessions/:sessionId           (session revocation)
+  //
+  // MUST be registered before /api/schools. Otherwise schoolsRouter
+  // could swallow /schools/:id/users if it ever gets a matching route.
+  { path: '/api', router: usersRouter },
+
+  // ── Everything else ─────────────────────────────────────────
   { path: '/api/schools', router: router },
   { path: '/api/terms', router: termsRouter },
-  { path: '/api/classes', router: classRouter },
-  { path: '/api/subjects', router: subjectRouter },
-  { path: '/api/teacher-subjects', router: teacherSubjectRouter },
+
   { path: '/api/timetables', router: timetableRouter },
   { path: '/api/students', router: studentRouter },
   { path: '/api/fees', router: financeRouter },
@@ -103,10 +121,16 @@ const apiRoutes = [
   { path: '/api/exams', router: examsRouter },
   { path: '/api/attendance', router: attendanceRouter },
   { path: '/api/homework', router: homeworkRouter },
-  { path: '/api/communication', router: communicationRouter },
-  { path: '/api/users', router: userRouter },
+
   { path: '/api/academic-structure', router: academicStructureRouter },
   { path: '/api/grading-scales', router: gradingScalesRouter },
+  { path: '/api/report-cards', router: reportCardsRouter },
+  { path: '/api/notifications', router: notificationsRouter },
+  { path: '/api/discipline', router: disciplineRouter },
+  { path: '/api/subscriptions', router: subscriptionsRouter },
+  { path: '/api/events', router: eventsRouter },
+  { path: '/api/curriculum', router: curriculumRouter },
+  { path: '/api/', router: planningRouter },
 ];
 
 apiRoutes.forEach(({ path, router }) => app.use(path, router));

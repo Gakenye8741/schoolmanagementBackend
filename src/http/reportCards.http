@@ -1,0 +1,182 @@
+@baseUrl = http://localhost:5000/api
+@rcUrl = {{baseUrl}}/report-cards
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+@studentId = 7b004352-5dc1-438a-933b-21be82c43ab8
+
+### Login first
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+# ================================================================
+# 1. PREVIEW
+# ================================================================
+
+### 1.1 Preview a report card (no save)
+POST {{rcUrl}}/preview
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}"
+}
+
+### 1.2 Preview with custom remarks
+POST {{rcUrl}}/preview
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}",
+  "classTeacherRemarks": "Excellent performance this term.",
+  "principalRemarks": "Promoted to next grade."
+}
+
+# ================================================================
+# 2. GENERATE
+# ================================================================
+
+### 2.1 Generate for one student
+# @name genOne
+POST {{rcUrl}}/generate
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}"
+}
+
+### Captured
+@reportCardId = 76336779-c1df-4923-9f43-8730f8607dc6
+
+### 2.2 Generate for whole class
+POST {{rcUrl}}/generate/class
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "termId": "{{termId}}"
+}
+
+### 2.3 Generate for whole school
+POST {{rcUrl}}/generate/school
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}"
+}
+
+### 2.4 Regenerate one (recompute from latest data)
+POST {{rcUrl}}/{{reportCardId}}/regenerate
+
+# ================================================================
+# 3. READS
+# ================================================================
+
+### 3.1 Get by ID
+GET {{rcUrl}}/{{reportCardId}}
+
+### 3.2 Get by student + term
+GET {{rcUrl}}/student/{{studentId}}/term/{{termId}}
+
+### 3.3 List for student (all terms)
+GET {{rcUrl}}/school/{{schoolId}}/student/{{studentId}}
+
+### 3.4 List for class
+GET {{rcUrl}}/school/{{schoolId}}/class/{{classId}}/term/{{termId}}
+
+### 3.5 List for term
+GET {{rcUrl}}/school/{{schoolId}}/term/{{termId}}
+
+### 3.6 Get full render-ready data (for PDF)
+GET {{rcUrl}}/{{reportCardId}}/data
+
+# ================================================================
+# 4. UPDATE
+# ================================================================
+
+### 4.1 Update remarks
+PATCH {{rcUrl}}/{{reportCardId}}/remarks
+Content-Type: application/json
+
+{
+  "classTeacherRemarks": "Excellent — top of the class.",
+  "principalRemarks": "Keep it up."
+}
+
+### 4.2 Override fields (admin correction)
+PATCH {{rcUrl}}/{{reportCardId}}/override
+Content-Type: application/json
+
+{
+  "meanScore": "82.50",
+  "attendanceDays": 58
+}
+
+# ================================================================
+# 5. PUBLISH
+# ================================================================
+
+### 5.1 Publish one
+POST {{rcUrl}}/{{reportCardId}}/publish
+
+### 5.2 Publish whole class
+POST {{rcUrl}}/publish/class
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "termId": "{{termId}}"
+}
+
+### 5.3 Unpublish one
+POST {{rcUrl}}/{{reportCardId}}/unpublish
+
+# ================================================================
+# 6. NEGATIVE TESTS
+# ================================================================
+
+### 6.1 Generate without published exams — expect 400
+POST {{rcUrl}}/generate
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "termId": "00000000-0000-0000-0000-000000000099"
+}
+
+### 6.2 Invalid UUID — expect 400
+POST {{rcUrl}}/generate
+Content-Type: application/json
+
+{
+  "schoolId": "not-a-uuid",
+  "studentId": "{{studentId}}",
+  "termId": "{{termId}}"
+}
+
+### 6.3 Get nonexistent report card — expect 404
+GET {{rcUrl}}/00000000-0000-0000-0000-000000000099
+
+### 6.4 Override with invalid meanScore — expect 400
+PATCH {{rcUrl}}/{{reportCardId}}/override
+Content-Type: application/json
+
+{
+  "meanScore": "150.00"
+}

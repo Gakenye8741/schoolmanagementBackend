@@ -1,57 +1,352 @@
-@expensesUrl = http://localhost:5000/api/expenses
-@schoolAdminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjRiNmNhYTE2LWQyZjEtNDlmZS1iYjkxLTQ5MGQ0ODYwZDQ1NCIsImVtYWlsIjoicHJpbmNpcGFsQHNjaG9vbC5lZHUiLCJyb2xlIjoic2Nob29sX2FkbWluIiwic2Nob29sSWQiOiI5MThhMjdmMy0yMzIxLTRmNjktYTE1Yy05YzYxZjlmNGY4MTgiLCJpYXQiOjE3ODg0NTYzNjgsImV4cCI6MTc4OTA2MTE2OH0.9v7PGhh3m_dKpCC8CuhobKkhi7LtZJhlu4f0RcXhf0g
-@schoolId = 918a27f3-2321-4f69-a15c-9c61f9f4f818
-@recordedBy = 4b6caa16-d2f1-49fe-bb91-490d4860d454
+@baseUrl = http://localhost:5000/api
+@expensesUrl = {{baseUrl}}/expenses
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
 
-### Variable placeholder for created expense ID during testing
-@expenseId = b713e8e0-d533-4d07-a2b9-15b7798fdf26
+@expensesId = 064d769a-54d9-4ccf-ade9-c5fc83becf24
+### 0.1 Login as bursar/admin
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
 
-### 1. Create School Expense Record
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+# ================================================================
+# 1. RECORD EXPENSES
+# ================================================================
+
+### 1.1 Record an electricity expense (Utilities)
+# @name recordElectricity
 POST {{expensesUrl}}
-Authorization: Bearer {{schoolAdminToken}}
 Content-Type: application/json
 
 {
   "schoolId": "{{schoolId}}",
-  "title": "Electricity Bill - March",
+  "title": "November Electricity Bill",
   "category": "Utilities",
-  "amount": 35400.00,
+  "amount": "45000.00",
   "paymentMethod": "Bank",
-  "referenceCode": "BK98765432",
-  "recordedBy": "{{recordedBy}}",
-  "expenseDate": "2026-03-31"
+  "referenceCode": "KPLC-2026-11-001",
+  "expenseDate": "2026-11-05"
 }
 
-### 2. Get All School Expenses for School
-GET {{expensesUrl}}/school/{{schoolId}}
-Authorization: Bearer {{schoolAdminToken}}
+### Captured
+@expenseId = {{recordElectricity.response.body.$.expense.id}}
 
-### 3. Get School Expenses Filtered by Category
-GET {{expensesUrl}}/school/{{schoolId}}/category?category=Utilities
-Authorization: Bearer {{schoolAdminToken}}
-
-### 4. Get School Expenses Within a Date Range
-GET {{expensesUrl}}/school/{{schoolId}}/date-range?startDate=2026-03-01&endDate=2026-03-31
-Authorization: Bearer {{schoolAdminToken}}
-
-### 5. Get School Expense Category Summary
-GET {{expensesUrl}}/school/{{schoolId}}/summary?startDate=2026-03-01&endDate=2026-03-31
-Authorization: Bearer {{schoolAdminToken}}
-
-### 6. Get School Expense by ID
-GET {{expensesUrl}}/{{expenseId}}
-Authorization: Bearer {{schoolAdminToken}}
-
-### 7. Update School Expense Details
-PUT {{expensesUrl}}/{{expenseId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 1.2 Record a teacher salary payment
+# @name recordSalary
+POST {{expensesUrl}}
 Content-Type: application/json
 
 {
-  "title": "Electricity Bill - March (Revised)",
-  "amount": 36000.00
+  "schoolId": "{{schoolId}}",
+  "title": "November Salary - Jane Teacher",
+  "category": "Salary",
+  "amount": "85000.00",
+  "paymentMethod": "Bank",
+  "referenceCode": "SAL-2026-11-001",
+  "expenseDate": "2026-11-06"
 }
 
-### 8. Delete School Expense Record
-DELETE {{expensesUrl}}/{{expenseId}}
-Authorization: Bearer {{schoolAdminToken}}
+### 1.3 Record a maintenance expense (cash)
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Roof repair - Grade 5 block",
+  "category": "Maintenance",
+  "amount": "12500.00",
+  "paymentMethod": "Cash",
+  "expenseDate": "2026-11-06"
+}
+
+### 1.4 Record a supplies expense
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Whiteboard markers and chalk (bulk)",
+  "category": "Supplies",
+  "amount": "3500.00",
+  "paymentMethod": "M-Pesa",
+  "referenceCode": "MPESA-2026-11-0042",
+  "expenseDate": "2026-01-07"
+}
+
+### 1.5 Record a transport expense
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Diesel - school bus",
+  "category": "Transport",
+  "amount": "8000.00",
+  "paymentMethod": "Cash",
+  "expenseDate": "2026-01-07"
+}
+
+### 1.6 Bulk record payroll (3 salaries at once)
+POST {{expensesUrl}}/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "expenses": [
+    {
+      "title": "November Salary - Mary Teacher",
+      "category": "Salary",
+      "amount": "78000.00",
+      "paymentMethod": "Bank",
+      "referenceCode": "SAL-2026-11-002",
+      "expenseDate": "2026-11-06"
+    },
+    {
+      "title": "November Salary - Bill Bursar",
+      "category": "Salary",
+      "amount": "92000.00",
+      "paymentMethod": "Bank",
+      "referenceCode": "SAL-2026-11-003",
+      "expenseDate": "2026-11-06"
+    },
+    {
+      "title": "November Salary - Sam Librarian",
+      "category": "Salary",
+      "amount": "65000.00",
+      "paymentMethod": "Bank",
+      "referenceCode": "SAL-2026-11-004",
+      "expenseDate": "2026-11-06"
+    }
+  ]
+}
+
+# ================================================================
+# 2. READS
+# ================================================================
+
+### 2.1 Get expense by ID
+GET {{expensesUrl}}/{{expenseId}}
+
+### 2.2 List all expenses for the school
+GET {{expensesUrl}}/school/{{schoolId}}
+
+### 2.3 List expenses — filtered by category
+GET {{expensesUrl}}/school/{{schoolId}}/category/Salary
+
+### 2.4 List expenses — filtered by date range
+GET {{expensesUrl}}/school/{{schoolId}}/by-date-range?fromDate=2026-11-01&toDate=2026-11-30
+
+### 2.5 List pending approval expenses
+GET {{expensesUrl}}/school/{{schoolId}}/pending-approval
+
+### 2.6 List only approved expenses
+GET {{expensesUrl}}/school/{{schoolId}}?approved=true
+
+# ================================================================
+# 3. APPROVALS
+# ================================================================
+
+### 3.1 Approve the electricity expense
+PATCH {{expensesUrl}}/{{expenseId}}/approve
+
+### 3.2 Revoke approval (back to pending)
+PATCH {{expensesUrl}}/{{expenseId}}/revoke-approval
+
+### 3.3 Re-approve
+PATCH {{expensesUrl}}/{{expenseId}}/approve
+
+# ================================================================
+# 4. UPDATES
+# ================================================================
+
+### 4.1 Update expense amount (bill was recalculated)
+PUT {{expensesUrl}}/{{expenseId}}
+Content-Type: application/json
+
+{
+  "amount": "47000.00",
+  "title": "November Electricity Bill (revised)"
+}
+
+### 4.2 Update category (reclassified as Maintenance)
+PUT {{expensesUrl}}/{{recordSalary.response.body.$.expense.id}}
+Content-Type: application/json
+
+{
+  "category": "Maintenance",
+  "title": "Computer lab repair (reclassified)"
+}
+
+# ================================================================
+# 5. ANALYTICS
+# ================================================================
+
+### 5.1 Expense summary (all time)
+GET {{expensesUrl}}/school/{{schoolId}}/summary
+
+### 5.2 Expense summary — filtered by date
+GET {{expensesUrl}}/school/{{schoolId}}/summary?fromDate=2026-11-01&toDate=2026-11-30
+
+### 5.3 Monthly trend (last 6 months)
+GET {{expensesUrl}}/school/{{schoolId}}/monthly-trend
+
+### 5.4 Monthly trend (last 12 months)
+GET {{expensesUrl}}/school/{{schoolId}}/monthly-trend?months=12
+
+### 5.5 Category breakdown (pie chart data)
+GET {{expensesUrl}}/school/{{schoolId}}/category-breakdown
+
+### 5.6 Top expense categories (top 3)
+GET {{expensesUrl}}/school/{{schoolId}}/top-categories?limit=3
+
+### 5.7 Fee vs expense comparison — the bursar's dashboard
+GET {{expensesUrl}}/school/{{schoolId}}/fee-comparison
+
+### 5.8 Fee vs expense comparison — filtered by date
+GET {{expensesUrl}}/school/{{schoolId}}/fee-comparison?fromDate=2026-11-01&toDate=2026-11-30
+
+# ================================================================
+# 6. NEGATIVE TESTS
+# ================================================================
+
+### 6.1 Create with invalid category — expect 400
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Test",
+  "category": "InvalidCategory",
+  "amount": "100.00",
+  "paymentMethod": "Cash",
+  "expenseDate": "2026-11-06"
+}
+
+### 6.2 Create with negative amount — expect 400
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Test",
+  "category": "Utilities",
+  "amount": "-100.00",
+  "paymentMethod": "Cash",
+  "expenseDate": "2026-11-06"
+}
+
+### 6.3 Create with zero amount — expect 400
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Test",
+  "category": "Utilities",
+  "amount": "0",
+  "paymentMethod": "Cash",
+  "expenseDate": "2026-11-06"
+}
+
+### 6.4 Create with future date — expect 400
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Test future",
+  "category": "Utilities",
+  "amount": "100.00",
+  "paymentMethod": "Cash",
+  "expenseDate": "2099-12-31"
+}
+
+### 6.5 Create with short title — expect 400
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "X",
+  "category": "Utilities",
+  "amount": "100.00",
+  "paymentMethod": "Cash",
+  "expenseDate": "2026-11-06"
+}
+
+### 6.6 Create with invalid school ID — expect 400
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "not-a-uuid",
+  "title": "Test",
+  "category": "Utilities",
+  "amount": "100.00",
+  "paymentMethod": "Cash",
+  "expenseDate": "2026-11-06"
+}
+
+### 6.7 Bulk create with empty array — expect 400
+POST {{expensesUrl}}/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "expenses": []
+}
+
+### 6.8 Bulk create with one invalid row (should skip it)
+POST {{expensesUrl}}/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "expenses": [
+    {
+      "title": "Valid expense",
+      "category": "Supplies",
+      "amount": "500.00",
+      "paymentMethod": "Cash",
+      "expenseDate": "2026-11-06"
+    },
+    {
+      "title": "X",
+      "category": "Supplies",
+      "amount": "500.00",
+      "paymentMethod": "Cash",
+      "expenseDate": "2026-11-06"
+    }
+  ]
+}
+
+### 6.9 Get nonexistent expense — expect 404
+GET {{expensesUrl}}/00000000-0000-0000-0000-000000000099
+
+### 6.10 Update with no fields — expect 400
+PUT {{expensesUrl}}/{{expenseId}}
+Content-Type: application/json
+
+{}
+
+### 6.11 Date range with inverted dates — expect 400
+GET {{expensesUrl}}/school/{{schoolId}}/by-date-range?fromDate=2026-12-31&toDate=2026-01-01
+
+### 6.12 Duplicate reference code — expect 400
+POST {{expensesUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Duplicate reference test",
+  "category": "Utilities",
+  "amount": "100.00",
+  "paymentMethod": "Bank",
+  "referenceCode": "KPLC-2026-11-001",
+  "expenseDate": "2026-11-06"
+}

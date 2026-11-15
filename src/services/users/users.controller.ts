@@ -1,443 +1,604 @@
-import { Request, Response } from 'express';
-import * as userService from './users.serices';
+// src/services/users/users.controller.ts
+import { Request, Response } from "express";
+import { eq } from "drizzle-orm";
 
-// Helper to safely extract a single string from req.params or req.query
-const getStringParam = (param: string | string[] | undefined): string | undefined => {
-  if (Array.isArray(param)) return param[0];
-  return param;
+import { users } from "../../drizzle/schema";
+import db from "../../drizzle/db";
+
+import {
+  createUserService,
+  bulkCreateUsersService,
+  getUserByIdService,
+  listAllUsersService,
+  listUsersForSchoolService,
+  listUsersByRoleService,
+  searchUsersService,
+  updateUserService,
+  updateUserRoleService,
+  updateUserRolesService,
+  addUserRoleService,
+  removeUserRoleService,
+  activateUserService,
+  deactivateUserService,
+  bulkDeactivateUsersService,
+  bulkActivateUsersService,
+  resetUserPasswordService,
+  forcePasswordChangeService,
+  clearMustChangePasswordService,
+  softDeleteUserService,
+  restoreUserService,
+  listUserSessionsService,
+  revokeUserSessionService,
+  revokeAllUserSessionsService,
+  getUsersStatsService,
+  countUsersByRoleService,
+  getRecentlyActiveUsersService,
+  getNeverLoggedInUsersService,
+  exportUsersService,
+} from "./users.service";
+
+import {
+  createUserSchema,
+  bulkCreateUsersSchema,
+  updateUserSchema,
+  updateUserRoleSchema,
+  updateUserRolesSchema,
+  addUserRoleSchema,
+  removeUserRoleSchema,
+  resetUserPasswordSchema,
+  bulkUserActionSchema,
+  listUsersQuerySchema,
+  listAllUsersQuerySchema,       // ← ADDED (was missing)
+  searchUsersQuerySchema,
+  listSessionsQuerySchema,
+  recentlyActiveQuerySchema,
+  userIdParamSchema,
+  sessionIdParamSchema,
+  schoolIdParamSchema,
+  roleParamSchema,
+} from "../../validators/users.validator";
+
+// ================================================================
+// Response helpers
+// ================================================================
+
+const fail = (res: Response, status: number, message: string, issues?: any) =>
+  res.status(status).json({ success: false, message, issues });
+
+const ok = (res: Response, result: any, status = 200) =>
+  res.status(status).json(result);
+
+const handleZod = (res: Response, err: any) => {
+  const first = err?.errors?.[0];
+  const field = first?.path?.join(".") ?? "input";
+  return fail(res, 400, `${field}: ${first?.message ?? "invalid value"}`, err?.errors);
 };
 
-// 1. Get Users with Pagination, Filtering, and Search (Super Admin can view all schools if schoolId is omitted)
-export const getUsersController = async (req: Request, res: Response): Promise<void> => {
+const isZod = (e: any) => e?.name === "ZodError" || Array.isArray(e?.errors);
+
+const actorId = (req: Request): string => (req as any).user?.id ?? "";
+
+// ================================================================
+// Access guards
+// ================================================================
+
+/**
+ * Super admin bypasses. Otherwise the target school must be the actor's school.
+ */
+const assertSchoolAccess = (req: Request, targetSchoolId: string): string | null => {
+  const user = (req as any).user;
+  if (!user) return "No user in request.";
+  if (user.role === "super_admin") return null;
+  if (user.schoolId === targetSchoolId) return null;
+  return "You can only manage users in your own school.";
+};
+
+/**
+ * Super admin bypasses. Otherwise the target user must belong to the actor's school.
+ */
+const assertUserAccess = async (
+  req: Request,
+  userId: string
+): Promise<string | null> => {
+  const actor = (req as any).user;
+  if (!actor) return "No user in request.";
+  if (actor.role === "super_admin") return null;
+
+  const target = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { schoolId: true },
+  });
+  if (!target) return "User not found.";
+  if (target.schoolId !== actor.schoolId) {
+    return "You can only manage users in your own school.";
+  }
+  return null;
+};
+
+// ================================================================
+// SUPER ADMIN — system-wide
+// ================================================================
+
+/**
+ * GET /admin/users
+ *
+ * Lists users across every school in the system. **Super admin only**
+ * (enforced by `superAdminAuth` middleware on the route).
+ *
+ * Filters:
+ *   - schoolId   → restrict to one school
+ *   - role       → restrict to one role (teacher, student, parent, …)
+ *   - isActive   → true | false
+ *   - search     → fuzzy match on name / email / phone
+ *   - page,limit → pagination
+ */
+export const listAllUsersController = async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    
-    // For super admins, allow schoolId to be entirely optional so they can fetch across all schools.
-    // For regular users, fall back to their assigned schoolId.
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    const { role, search, isActive, page, limit, sortBy, sortOrder } = req.query;
-
-    // Rule enforcement: Non-super-admins cannot view student records via this general list endpoint if restricted
-    let roleFilter = role as any;
-    if (!isSuperAdmin && role === 'student') {
-      res.status(403).json({ success: false, message: 'Access denied to student records' });
-      return;
-    }
-
-    const result = await userService.getUsers({
-      schoolId: isSuperAdmin ? (schoolId || undefined) : schoolId,
-      role: roleFilter,
-      search: getStringParam(search as string | string[]),
-      isActive: isActive !== undefined ? isActive === 'true' : undefined,
-      page: page ? parseInt(getStringParam(page as string | string[]) || '1', 10) : undefined,
-      limit: limit ? parseInt(getStringParam(limit as string | string[]) || '10', 10) : undefined,
-      sortBy: sortBy as any,
-      sortOrder: sortOrder as any,
+    const q = listAllUsersQuerySchema.parse(req.query);
+    const result = await listAllUsersService({
+      schoolId: q.schoolId,
+      role: q.role,
+      isActive: q.isActive === undefined ? undefined : q.isActive === "true",
+      search: q.search,
+      page: q.page,
+      limit: q.limit,
     });
-
-    res.status(200).json({ success: true, ...result });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not list users across schools.", e?.message);
   }
 };
 
-// 2. Get User By ID
-export const getUserByIdController = async (req: Request, res: Response): Promise<void> => {
+// ================================================================
+// SCHOOL-SCOPED — create
+// ================================================================
+
+export const createUserController = async (req: Request, res: Response) => {
   try {
-    let rawId = getStringParam(req.params.id);
-    
-    // Sanitize ID to strip out accidental path/query leaks (e.g. "@classId...")
-    const id = rawId ? rawId.split('@')[0].split('?')[0].trim() : '';
-
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    if (!id) {
-      res.status(400).json({ success: false, message: 'User ID is required' });
-      return;
-    }
-
-    const foundUser = await userService.getUserById(id, isSuperAdmin ? (schoolId || undefined) : schoolId);
-    if (!foundUser) {
-      res.status(404).json({ success: false, message: 'User not found' });
-      return;
-    }
-
-    res.status(200).json({ success: true, data: foundUser });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    const body = createUserSchema.parse(req.body);
+    const err = assertSchoolAccess(req, body.schoolId);
+    if (err) return fail(res, 403, err);
+    const result = await createUserService(body);
+    return ok(res, result, result.success ? 201 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not create user.", e?.message);
   }
 };
 
-// 3. Get User By Email
-export const getUserByEmailController = async (req: Request, res: Response): Promise<void> => {
+export const bulkCreateUsersController = async (req: Request, res: Response) => {
   try {
-    const email = getStringParam(req.query.email as string | string[]);
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-
-    if (!email) {
-      res.status(400).json({ success: false, message: 'Email query parameter is required' });
-      return;
-    }
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    const foundUser = await userService.getUserByEmail(email, isSuperAdmin ? (schoolId || undefined) : schoolId);
-    if (!foundUser) {
-      res.status(404).json({ success: false, message: 'User not found' });
-      return;
-    }
-
-    const { passwordHash, ...safeUser } = foundUser;
-    res.status(200).json({ success: true, data: safeUser });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    const body = bulkCreateUsersSchema.parse(req.body);
+    const err = assertSchoolAccess(req, body.schoolId);
+    if (err) return fail(res, 403, err);
+    const result = await bulkCreateUsersService(body);
+    return ok(res, result, result.success ? 201 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not bulk-create users.", e?.message);
   }
 };
 
-// 4. Create User
-export const createUserController = async (req: Request, res: Response): Promise<void> => {
+// ================================================================
+// SCHOOL-SCOPED — read
+// ================================================================
+
+/**
+ * GET /schools/:schoolId/users
+ *
+ * Lists every user in a school. This is the school admin's primary view —
+ * it includes students, parents, and all staff.
+ *
+ * Filters:
+ *   - role             → any role, including `student` and `parent`
+ *   - isActive         → true | false
+ *   - includeStudents  → when no role filter is set, decide whether students appear (default true)
+ *   - page, limit      → pagination
+ */
+export const listUsersForSchoolController = async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || req.body.schoolId || (isSuperAdmin ? undefined : user?.schoolId);
+    const { schoolId } = schoolIdParamSchema.parse(req.params);
+    const err = assertSchoolAccess(req, schoolId);
+    if (err) return fail(res, 403, err);
 
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    const userData = { ...req.body, ...(schoolId ? { schoolId } : {}) };
-    
-    if (userData.admissionNumber && schoolId) {
-      const isTaken = await userService.isAdmissionNumberTaken(userData.admissionNumber, schoolId);
-      if (isTaken) {
-        res.status(400).json({ success: false, message: 'Admission number is already taken within this school' });
-        return;
-      }
-    }
-
-    const newUser = await userService.createUser(userData);
-    res.status(201).json({ success: true, data: newUser });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
-  }
-};
-
-
-// 9. Get Users Count By Role
-export const getUsersCountByRoleController = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const role = getStringParam(req.params.role);
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    if (!role) {
-      res.status(400).json({ success: false, message: 'Role is required' });
-      return;
-    }
-
-    const count = await userService.getUsersCountByRole(isSuperAdmin ? (schoolId || undefined) : schoolId, role as any);
-    res.status(200).json({ success: true, count });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
-  }
-};
-
-// 10. Get Teachers By School
-export const getTeachersBySchoolController = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    const teachers = await userService.getTeachersBySchool(isSuperAdmin ? (schoolId || undefined) : schoolId);
-    res.status(200).json({ success: true, data: teachers });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
-  }
-};
-
-// 13. Get All Students by School ID
-export const getStudentsBySchoolIdController = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    const students = await userService.getStudentsBySchoolId(isSuperAdmin ? (schoolId || undefined) : schoolId);
-    res.status(200).json({ success: true, data: students });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
-  }
-};
-
-// 14. Bulk Update User Status
-export const bulkUpdateUserStatusController = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    
-    // Extract schoolId from query parameters, body, or fall back to user context
-    const schoolId = getStringParam(req.query.schoolId as string | string[]) || 
-                     getStringParam(req.body.schoolId) || 
-                     (isSuperAdmin ? undefined : user?.schoolId);
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    const { userIds, isActive } = req.body;
-
-    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-      res.status(400).json({ success: false, message: 'userIds array is required' });
-      return;
-    }
-
-    if (typeof isActive !== 'boolean') {
-      res.status(400).json({ success: false, message: 'isActive boolean field is required' });
-      return;
-    }
-
-    const result = await userService.bulkUpdateUserStatus(schoolId, userIds, isActive);
-
-    res.status(200).json({ success: true, data: result });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
-  }
-};
-
-// 15. Check Admission Number Availability
-export const checkAdmissionNumberController = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-    const admissionNumber = getStringParam(req.query.admissionNumber as string | string[]);
-    const excludeUserId = getStringParam(req.query.excludeUserId as string | string[]);
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    if (!admissionNumber) {
-      res.status(400).json({ success: false, message: 'admissionNumber query parameter is required' });
-      return;
-    }
-
-    const isTaken = await userService.isAdmissionNumberTaken(
-      admissionNumber,
-      isSuperAdmin ? (schoolId || undefined) : schoolId,
-      excludeUserId
-    );
-
-    res.status(200).json({ success: true, isTaken });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
-  }
-};
-
-export const getAllUsersBySuperAdminController = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-
-    if (!isSuperAdmin) {
-      res.status(403).json({ success: false, message: 'Access denied. Super admin privileges required.' });
-      return;
-    }
-
-    const { schoolId, role, search, isActive, page, limit, sortBy, sortOrder } = req.query;
-
-    const result = await userService.getAllUsersBySuperAdmin({
-      schoolId: getStringParam(schoolId as string | string[]),
-      role: getStringParam(role as string | string[]),
-      search: getStringParam(search as string | string[]),
-      isActive: isActive !== undefined ? isActive === 'true' : undefined,
-      page: page ? parseInt(getStringParam(page as string | string[]) || '1', 10) : undefined,
-      limit: limit ? parseInt(getStringParam(limit as string | string[]) || '10', 10) : undefined,
-      sortBy: getStringParam(sortBy as string | string[]) as any,
-      sortOrder: getStringParam(sortOrder as string | string[]) as any,
+    const q = listUsersQuerySchema.parse(req.query);
+    const result = await listUsersForSchoolService(schoolId, {
+      role: q.role,
+      isActive: q.isActive === undefined ? undefined : q.isActive === "true",
+      includeStudents: q.includeStudents === "true",
+      page: q.page,
+      limit: q.limit,
     });
-
-    res.status(200).json({ success: true, ...result });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not list users.", e?.message);
   }
 };
 
-// Helper utility to sanitize incoming ID parameters against accidental path/query leaks
-const sanitizeId = (rawId: string | undefined): string => {
-  if (!rawId) return '';
-  return rawId.split('@')[0].split('?')[0].trim();
-};
-
-// 12. Get Student Profile By ID
-export const getStudentByUserIdController = async (req: Request, res: Response): Promise<void> => {
+/**
+ * GET /schools/:schoolId/users/by-role/:role
+ *
+ * Every user in a school with a specific role. Useful shortcut when you
+ * want ALL students / ALL parents / ALL teachers without pagination:
+ *   - `/schools/:id/users/by-role/student`
+ *   - `/schools/:id/users/by-role/parent`
+ *   - `/schools/:id/users/by-role/teacher`
+ */
+export const listUsersByRoleController = async (req: Request, res: Response) => {
   try {
-    const id = sanitizeId(getStringParam(req.params.id));
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    if (!id) {
-      res.status(400).json({ success: false, message: 'User ID is required' });
-      return;
-    }
-
-    const studentProfile = await userService.getStudentByUserId(id, isSuperAdmin ? (schoolId || undefined) : schoolId);
-    if (!studentProfile) {
-      res.status(404).json({ success: false, message: 'Student profile not found' });
-      return;
-    }
-
-    res.status(200).json({ success: true, data: studentProfile });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    const { schoolId } = schoolIdParamSchema.parse(req.params);
+    const { role } = roleParamSchema.parse(req.params);
+    const err = assertSchoolAccess(req, schoolId);
+    if (err) return fail(res, 403, err);
+    const result = await listUsersByRoleService(schoolId, role);
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not list users.", e?.message);
   }
 };
 
-// 5. Update User Details
-export const updateUserController = async (req: Request, res: Response): Promise<void> => {
+export const getUserByIdController = async (req: Request, res: Response) => {
   try {
-    const id = sanitizeId(getStringParam(req.params.id));
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    if (!id) {
-      res.status(400).json({ success: false, message: 'User ID is required' });
-      return;
-    }
-
-    if (req.body.admissionNumber && schoolId) {
-      const isTaken = await userService.isAdmissionNumberTaken(req.body.admissionNumber, schoolId, id);
-      if (isTaken) {
-        res.status(400).json({ success: false, message: 'Admission number is already taken by another user' });
-        return;
-      }
-    }
-
-    const updatedUser = await userService.updateUser(id, isSuperAdmin ? (schoolId || undefined) : schoolId, req.body);
-    if (!updatedUser) {
-      res.status(404).json({ success: false, message: 'User not found' });
-      return;
-    }
-
-    res.status(200).json({ success: true, data: updatedUser });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const result = await getUserByIdService(userId);
+    return ok(res, result, result.success ? 200 : 404);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not load user.", e?.message);
   }
 };
 
-// 6. Update User Active Status
-export const updateUserStatusController = async (req: Request, res: Response): Promise<void> => {
+export const searchUsersController = async (req: Request, res: Response) => {
   try {
-    const id = sanitizeId(getStringParam(req.params.id));
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
-    const { isActive } = req.body;
-
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
-    }
-
-    if (!id) {
-      res.status(400).json({ success: false, message: 'User ID is required' });
-      return;
-    }
-
-    if (typeof isActive !== 'boolean') {
-      res.status(400).json({ success: false, message: 'isActive boolean field is required' });
-      return;
-    }
-
-    const updatedUser = await userService.updateUserStatus(id, isSuperAdmin ? (schoolId || undefined) : schoolId, isActive);
-    if (!updatedUser) {
-      res.status(404).json({ success: false, message: 'User not found' });
-      return;
-    }
-
-    res.status(200).json({ success: true, data: updatedUser });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    const { schoolId } = schoolIdParamSchema.parse(req.params);
+    const err = assertSchoolAccess(req, schoolId);
+    if (err) return fail(res, 403, err);
+    const q = searchUsersQuerySchema.parse(req.query);
+    const result = await searchUsersService(schoolId, q.q, {
+      role: q.role,
+      includeStudents: q.includeStudents === "true",
+      limit: q.limit,
+    });
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not search users.", e?.message);
   }
 };
 
-// 8. Delete User
-export const deleteUserController = async (req: Request, res: Response): Promise<void> => {
+// ================================================================
+// SCHOOL-SCOPED — update profile
+// ================================================================
+
+export const updateUserController = async (req: Request, res: Response) => {
   try {
-    const id = sanitizeId(getStringParam(req.params.id));
-    const user = (req as any).user;
-    const isSuperAdmin = user?.role === 'super_admin';
-    const schoolId = getStringParam(req.params.schoolId) || (isSuperAdmin ? undefined : user?.schoolId) || getStringParam(req.query.schoolId as string | string[]);
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const body = updateUserSchema.parse(req.body);
+    const result = await updateUserService(userId, body);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not update user.", e?.message);
+  }
+};
 
-    if (!isSuperAdmin && !schoolId) {
-      res.status(400).json({ success: false, message: 'School ID is required' });
-      return;
+// ================================================================
+// SCHOOL-SCOPED — role management
+// ================================================================
+
+export const updateUserRoleController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const { role } = updateUserRoleSchema.parse(req.body);
+    const result = await updateUserRoleService(userId, role);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not update role.", e?.message);
+  }
+};
+
+export const updateUserRolesController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const { roles, primaryRole } = updateUserRolesSchema.parse(req.body);
+    const result = await updateUserRolesService(userId, roles, primaryRole);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not update roles.", e?.message);
+  }
+};
+
+export const addUserRoleController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const { role } = addUserRoleSchema.parse(req.body);
+    const result = await addUserRoleService(userId, role);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not add role.", e?.message);
+  }
+};
+
+export const removeUserRoleController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const { role } = removeUserRoleSchema.parse(req.body);
+    const result = await removeUserRoleService(userId, role);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not remove role.", e?.message);
+  }
+};
+
+// ================================================================
+// SCHOOL-SCOPED — status
+// ================================================================
+
+export const activateUserController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const result = await activateUserService(userId);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not activate user.", e?.message);
+  }
+};
+
+export const deactivateUserController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const result = await deactivateUserService(userId, actorId(req));
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not deactivate user.", e?.message);
+  }
+};
+
+export const bulkDeactivateUsersController = async (req: Request, res: Response) => {
+  try {
+    const { userIds } = bulkUserActionSchema.parse(req.body);
+    for (const id of userIds) {
+      const err = await assertUserAccess(req, id);
+      if (err) return fail(res, 403, `${id}: ${err}`);
     }
+    const result = await bulkDeactivateUsersService(userIds, actorId(req));
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not bulk deactivate.", e?.message);
+  }
+};
 
-    if (!id) {
-      res.status(400).json({ success: false, message: 'User ID is required' });
-      return;
+export const bulkActivateUsersController = async (req: Request, res: Response) => {
+  try {
+    const { userIds } = bulkUserActionSchema.parse(req.body);
+    for (const id of userIds) {
+      const err = await assertUserAccess(req, id);
+      if (err) return fail(res, 403, `${id}: ${err}`);
     }
+    const result = await bulkActivateUsersService(userIds);
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not bulk activate.", e?.message);
+  }
+};
 
-    const deleted = await userService.deleteUser(id, isSuperAdmin ? (schoolId || undefined) : schoolId);
-    if (!deleted) {
-      res.status(404).json({ success: false, message: 'User not found' });
-      return;
-    }
+// ================================================================
+// SCHOOL-SCOPED — password
+// ================================================================
 
-    res.status(200).json({ success: true, message: 'User deleted successfully' });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+export const resetUserPasswordController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const body = resetUserPasswordSchema.parse(req.body);
+    const result = await resetUserPasswordService(userId, body.newPassword, {
+      mustChangePassword: body.mustChangePassword,
+      revokeSessions: body.revokeSessions,
+    });
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not reset password.", e?.message);
+  }
+};
+
+export const forcePasswordChangeController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const result = await forcePasswordChangeService(userId);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not force change.", e?.message);
+  }
+};
+
+export const clearMustChangePasswordController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const result = await clearMustChangePasswordService(userId);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not clear flag.", e?.message);
+  }
+};
+
+// ================================================================
+// SCHOOL-SCOPED — delete / restore
+// ================================================================
+
+export const softDeleteUserController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const result = await softDeleteUserService(userId, actorId(req));
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not delete user.", e?.message);
+  }
+};
+
+export const restoreUserController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const result = await restoreUserService(userId);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not restore user.", e?.message);
+  }
+};
+
+// ================================================================
+// SCHOOL-SCOPED — sessions
+// ================================================================
+
+export const listUserSessionsController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const q = listSessionsQuerySchema.parse(req.query);
+    const result = await listUserSessionsService(userId, {
+      activeOnly: q.activeOnly === "true",
+      page: q.page,
+      limit: q.limit,
+    });
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not list sessions.", e?.message);
+  }
+};
+
+export const revokeUserSessionController = async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = sessionIdParamSchema.parse(req.params);
+    const result = await revokeUserSessionService(sessionId);
+    return ok(res, result, result.success ? 200 : 400);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not revoke session.", e?.message);
+  }
+};
+
+export const revokeAllUserSessionsController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = userIdParamSchema.parse(req.params);
+    const err = await assertUserAccess(req, userId);
+    if (err) return fail(res, 403, err);
+    const result = await revokeAllUserSessionsService(userId);
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not revoke sessions.", e?.message);
+  }
+};
+
+// ================================================================
+// SCHOOL-SCOPED — stats
+// ================================================================
+
+export const getUsersStatsController = async (req: Request, res: Response) => {
+  try {
+    const { schoolId } = schoolIdParamSchema.parse(req.params);
+    const err = assertSchoolAccess(req, schoolId);
+    if (err) return fail(res, 403, err);
+    const result = await getUsersStatsService(schoolId);
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not compute stats.", e?.message);
+  }
+};
+
+export const countUsersByRoleController = async (req: Request, res: Response) => {
+  try {
+    const { schoolId } = schoolIdParamSchema.parse(req.params);
+    const { role } = roleParamSchema.parse(req.params);
+    const err = assertSchoolAccess(req, schoolId);
+    if (err) return fail(res, 403, err);
+    const result = await countUsersByRoleService(schoolId, role);
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not count users.", e?.message);
+  }
+};
+
+export const getRecentlyActiveUsersController = async (req: Request, res: Response) => {
+  try {
+    const { schoolId } = schoolIdParamSchema.parse(req.params);
+    const err = assertSchoolAccess(req, schoolId);
+    if (err) return fail(res, 403, err);
+    const q = recentlyActiveQuerySchema.parse(req.query);
+    const result = await getRecentlyActiveUsersService(schoolId, q.withinDays, q.limit);
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not list recently active users.", e?.message);
+  }
+};
+
+export const getNeverLoggedInUsersController = async (req: Request, res: Response) => {
+  try {
+    const { schoolId } = schoolIdParamSchema.parse(req.params);
+    const err = assertSchoolAccess(req, schoolId);
+    if (err) return fail(res, 403, err);
+    const result = await getNeverLoggedInUsersService(schoolId);
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not fetch users.", e?.message);
+  }
+};
+
+export const exportUsersController = async (req: Request, res: Response) => {
+  try {
+    const { schoolId } = schoolIdParamSchema.parse(req.params);
+    const err = assertSchoolAccess(req, schoolId);
+    if (err) return fail(res, 403, err);
+    const result = await exportUsersService(schoolId);
+    return ok(res, result, 200);
+  } catch (e: any) {
+    if (isZod(e)) return handleZod(res, e);
+    return fail(res, 500, "Could not export users.", e?.message);
   }
 };

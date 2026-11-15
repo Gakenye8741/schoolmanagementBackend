@@ -1,0 +1,346 @@
+@baseUrl = http://localhost:5000/api
+@notifUrl = {{baseUrl}}/notifications
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+@studentId = 7b004352-5dc1-438a-933b-21be82c43ab8
+
+### 0.1 Login as admin
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+# ================================================================
+# 1. ANNOUNCEMENTS
+# ================================================================
+
+### 1.1 Create a school-wide announcement
+# @name createAnnouncement
+POST {{notifUrl}}/announcements
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Term 1 Closing Ceremony",
+  "message": "The Term 1 closing ceremony will be held on Friday at 10:00 AM in the main hall. All parents are invited.",
+  "targetAudience": "All",
+  "sendViaSms": false
+}
+
+### 1.2 Announcement targeting a specific class
+POST {{notifUrl}}/announcements
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Grade 5 East — Field Trip",
+  "message": "The Grade 5 East field trip is scheduled for next Wednesday. Please ensure your child carries a packed lunch.",
+  "targetAudience": "Parents",
+  "classId": "{{classId}}",
+  "sendViaSms": true
+}
+
+### 1.3 Get by ID
+GET {{notifUrl}}/announcements/1f383a2a-b518-4735-aea2-815cb397065c
+### 1.4 List all announcements for the school
+GET {{notifUrl}}/announcements/school/{{schoolId}}
+
+### 1.5 List announcements — filtered by audience
+GET {{notifUrl}}/announcements/school/{{schoolId}}?audience=Parents
+
+### 1.6 My active announcements
+GET {{notifUrl}}/announcements/mine
+
+### 1.7 Announcements for a class
+GET {{notifUrl}}/announcements/class/{{classId}}
+
+### 1.8 Count announcements
+GET {{notifUrl}}/announcements/school/{{schoolId}}/count
+
+### 1.9 Update announcement
+PATCH {{notifUrl}}/announcements/1f383a2a-b518-4735-aea2-815cb397065c
+Content-Type: application/json
+
+{
+  "title": "Term 1 Closing Ceremony (Updated)",
+  "message": "The Term 1 closing ceremony has been moved to Saturday at 10:00 AM. All parents are invited."
+}
+
+### 1.10 Schedule expiry (30 days from now)
+POST {{notifUrl}}/announcements/{{createAnnouncement.response.body.$.announcement.id}}/schedule
+Content-Type: application/json
+
+{
+  "expiresAt": "2026-12-06T23:59:59Z"
+}
+
+### 1.11 Bulk create announcements
+POST {{notifUrl}}/announcements/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "announcements": [
+    {
+      "title": "Sports Day",
+      "message": "Sports day will be held on Friday 15th November.",
+      "targetAudience": "All"
+    },
+    {
+      "title": "Exam Timetable",
+      "message": "End-of-term exam timetable is now available on the notice board.",
+      "targetAudience": "Students"
+    }
+  ]
+}
+
+### 1.12 Delete announcement
+DELETE {{notifUrl}}/announcements/1f383a2a-b518-4735-aea2-815cb397065c
+# ================================================================
+# 2. NOTIFICATIONS (bell icon)
+# ================================================================
+
+### 2.1 My notifications
+GET {{notifUrl}}/notifications/mine
+
+### 2.2 My unread notifications only
+GET {{notifUrl}}/notifications/mine?unreadOnly=true&limit=20
+
+### 2.3 My unread count
+GET {{notifUrl}}/notifications/mine/unread-count
+
+### 2.4 Create a notification for another user (admin)
+# Prereq: replace with a real user ID
+POST {{notifUrl}}/notifications
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "userId": "89813af8-bc98-45dd-aaeb-cd7de0eaab85",
+  "type": "System",
+  "title": "Welcome to the system",
+  "body": "Your account is ready. Please change your password on first login.",
+  "data": { "action": "change_password" }
+}
+
+### 2.5 Bulk create notifications for multiple users
+POST {{notifUrl}}/notifications/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "userIds": [
+    "00000000-0000-0000-0000-000000000099",
+    "00000000-0000-0000-0000-000000000100"
+  ],
+  "type": "Announcement",
+  "title": "Important notice",
+  "body": "Please check the updated school calendar."
+}
+
+### 2.6 Mark all as read
+POST {{notifUrl}}/notifications/mark-all-read
+Content-Type: application/json
+
+{}
+
+### 2.7 Mark specific notifications as read
+POST {{notifUrl}}/notifications/mark-all-read
+Content-Type: application/json
+
+{
+  "onlyIds": ["00000000-0000-0000-0000-000000000099"]
+}
+
+# ================================================================
+# 3. SMS — QUEUE ONLY
+# ================================================================
+
+### 3.1 Queue a single SMS
+# @name queueOne
+POST {{notifUrl}}/sms
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "to": "+254712345678",
+  "message": "Nairobi Academy: School closes on Friday at 12:00 PM. Please pick up your child on time."
+}
+
+### Captured
+@smsLogId = de4be88b-13dc-401a-a2aa-346addc8bce5
+
+### 3.2 Queue bulk SMS (same message to multiple recipients)
+POST {{notifUrl}}/sms/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "recipients": [
+    { "to": "+254712345678", "message": "Fee balance reminder" },
+    { "to": "+254798765432", "message": "Fee balance reminder" }
+  ]
+}
+
+### 3.3 Queue absentee alerts for today
+POST {{notifUrl}}/sms/absentees
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "date": "2026-11-06"
+}
+
+### 3.4 Queue fee reminders for the current term
+POST {{notifUrl}}/sms/fee-reminders
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}",
+  "minBalance": 1000
+}
+
+### 3.5 Queue report-card-ready notifications
+POST {{notifUrl}}/sms/report-cards-ready
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "termId": "{{termId}}"
+}
+
+### 3.6 Queue SMS for a specific announcement
+POST {{notifUrl}}/sms/announcement
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "announcementId": "00000000-0000-0000-0000-000000000099"
+}
+
+### 3.7 List all SMS logs
+GET {{notifUrl}}/sms/school/{{schoolId}}
+
+### 3.8 List queued SMS only
+GET {{notifUrl}}/sms/school/{{schoolId}}?status=Queued
+
+### 3.9 Get SMS log by ID
+GET {{notifUrl}}/sms/{{smsLogId}}
+
+### 3.10 Mark queued SMS as Sent (after school sends via their provider)
+POST {{notifUrl}}/sms/mark-sent
+Content-Type: application/json
+
+{
+  "ids": ["{{smsLogId}}"],
+  "providerMessageId": "AT-EXT-REF-2026-0001"
+}
+
+### 3.11 SMS stats by status
+GET {{notifUrl}}/sms/school/{{schoolId}}/stats
+
+# ================================================================
+# 4. DIRECT MESSAGES
+# ================================================================
+
+### 4.1 Send a direct message
+# @name sendDm
+POST {{notifUrl}}/messages
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "receiverId": "{{studentId}}",
+  "messageText": "Hi, could we schedule a meeting about Sam's progress?"
+}
+
+### 4.2 My inbox (most recent message per sender)
+GET {{notifUrl}}/messages/inbox
+
+### 4.3 Thread with a specific user
+GET {{notifUrl}}/messages/thread?withUserId=00000000-0000-0000-0000-000000000099
+
+### 4.4 My unread messages
+GET {{notifUrl}}/messages/unread
+
+### 4.5 Mark a message read
+POST {{notifUrl}}/messages/{{sendDm.response.body.$.messageRow.id}}/read
+
+### 4.6 Delete a message (sender only)
+DELETE {{notifUrl}}/messages/{{sendDm.response.body.$.messageRow.id}}
+
+# ================================================================
+# 5. NEGATIVE TESTS
+# ================================================================
+
+### 5.1 Invalid phone — expect 400
+POST {{notifUrl}}/sms
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "to": "not-a-phone",
+  "message": "Test"
+}
+
+### 5.2 Empty message — expect 400
+POST {{notifUrl}}/sms
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "to": "+254712345678",
+  "message": ""
+}
+
+### 5.3 Announcement with classId but audience != Parents — expect 400
+POST {{notifUrl}}/announcements
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Test",
+  "message": "Test message",
+  "targetAudience": "Students",
+  "classId": "{{classId}}"
+}
+
+### 5.4 Announcement with short title — expect 400
+POST {{notifUrl}}/announcements
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "X",
+  "message": "A valid message here",
+  "targetAudience": "All"
+}
+
+### 5.5 Duplicate user IDs in bulk notification — expect 400
+POST {{notifUrl}}/notifications/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "userIds": ["00000000-0000-0000-0000-000000000099", "00000000-0000-0000-0000-000000000099"],
+  "type": "System",
+  "title": "Test",
+  "body": "Test"
+}
+
+### 5.6 Send DM to yourself — expect 400
+POST {{notifUrl}}/messages
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "receiverId": "{{sendDm.response.body.$.messageRow.senderId}}",
+  "messageText": "Test"
+}

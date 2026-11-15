@@ -1,389 +1,1191 @@
-import  db  from "../../drizzle/db";
-import { eq, and, gte, asc, desc } from "drizzle-orm";
-import { 
-  coCurricularActivities, 
-  schoolEvents, 
-  studentActivityMemberships 
+// src/services/events/events.service.ts
+import {
+  eq, and, ne, asc, desc, count, sql, isNull, inArray, gte, lte, or, gt, isNotNull,
+} from "drizzle-orm";
+
+import {
+  schoolEvents,
+  coCurricularActivities,
+  studentActivityMemberships,
+  schools,
+  users,
+  students,
+  academicTerms,
+  TSelectSchoolEvent,
+  TSelectCoCurricularActivity,
+  TSelectStudentActivityMembership,
 } from "../../drizzle/schema";
-import { 
-  TInsertCoCurricularActivity, 
-  TInsertSchoolEvent, 
-  TInsertStudentActivityMembership 
-} from "../../drizzle/types";
+import db from "../../drizzle/db";
 
-/**
- * Translate database constraint errors into human-friendly messages.
- */
-const formatDatabaseError = (errorMessage: string = ""): string => {
-  if (errorMessage.includes("school_id") || errorMessage.includes("schools_id_fk")) {
-    return "The specified school does not exist in the system.";
-  }
-  if (errorMessage.includes("posted_by") || errorMessage.includes("patron_teacher_id") || errorMessage.includes("users_id_fk")) {
-    return "The specified user account could not be found.";
-  }
-  if (errorMessage.includes("student_id") || errorMessage.includes("students_id_fk")) {
-    return "The specified student record does not exist.";
-  }
-  if (errorMessage.includes("activity_id") || errorMessage.includes("co_curricular_activities_id_fk")) {
-    return "The specified co-curricular activity does not exist.";
-  }
-  if (errorMessage.includes("term_id") || errorMessage.includes("academic_terms_id_fk")) {
-    return "The specified academic term does not exist.";
-  }
-  if (errorMessage.includes("unique constraint") || errorMessage.includes("duplicate key")) {
-    return "A conflicting record already exists in the database.";
-  }
-  return errorMessage || "An unexpected database error occurred.";
+// ================================================================
+// Types
+// ================================================================
+export type EventCategory =
+  | "Academic" | "Sports" | "Cultural" | "Club"
+  | "Meeting" | "Holiday" | "General" | "Other";
+
+export interface EventsResponse {
+  success: boolean;
+  message: string;
+  event?: TSelectSchoolEvent;
+  events?: TSelectSchoolEvent[];
+  activity?: TSelectCoCurricularActivity;
+  activities?: TSelectCoCurricularActivity[];
+  membership?: TSelectStudentActivityMembership;
+  memberships?: TSelectStudentActivityMembership[];
+  calendar?: Array<{
+    month: string; // "2026-11"
+    label: string; // "November 2026"
+    events: Array<{
+      id: string;
+      title: string;
+      category: string;
+      startDate: string;
+      endDate: string;
+      location: string | null;
+    }>;
+  }>;
+  stats?: Record<string, any>;
+  count?: number;
+  issues?: string[];
+}
+
+// ================================================================
+// Helpers
+// ================================================================
+const now = () => new Date();
+const nowIso = () => now().toISOString();
+const toIso = (d: Date | string) => new Date(d).toISOString();
+
+const assertSchoolExists = async (schoolId: string) =>
+  await db.query.schools.findFirst({ where: eq(schools.id, schoolId) });
+
+const monthLabel = (yearMonth: string): string => {
+  const [y, m] = yearMonth.split("-");
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const idx = Number(m) - 1;
+  return `${months[idx] ?? "?"} ${y}`;
 };
 
-// ==========================================
-// SCHOOL EVENTS SERVICES
-// ==========================================
+// ================================================================
+// SCHOOL EVENTS — 12 services
+// ================================================================
 
-export const createSchoolEventService = async (data: TInsertSchoolEvent) => {
+// 1. Create
+export const createSchoolEventService = async (
+  data: {
+    schoolId: string;
+    title: string;
+    description?: string | null;
+    category: EventCategory;
+    location?: string | null;
+    startDate: string;
+    endDate: string;
+  },
+  postedBy: string
+): Promise<EventsResponse> => {
   try {
-    const [newEvent] = await db.insert(schoolEvents).values(data).returning();
-    return {
-      success: true,
-      message: "School event successfully created.",
-      data: newEvent,
-    };
-  } catch (error: any) {
-    return {
-      success: false,
-      message: formatDatabaseError(error.message),
-    };
+    const school = await assertSchoolExists(data.schoolId);
+    if (!school) return { success: false, message: "School not found." };
+
+    const [row] = await db
+      .insert(schoolEvents)
+      .values({
+        schoolId: data.schoolId,
+        title: data.title.trim(),
+        description: data.description?.trim() ?? null,
+        category: data.category,
+        location: data.location?.trim() ?? null,
+        startDate: new Date(data.startDate),
+        endDate: new Date(data.endDate),
+        postedBy,
+      })
+      .returning();
+
+    return { success: true, message: `Event "${row.title}" created.`, event: row };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to create event." };
   }
 };
 
-export const getSchoolEventByIdService = async (id: string) => {
+// 2. Bulk create
+export const bulkCreateSchoolEventsService = async (
+  data: {
+    schoolId: string;
+    events: Array<{
+      title: string;
+      description?: string | null;
+      category: EventCategory;
+      location?: string | null;
+      startDate: string;
+      endDate: string;
+    }>;
+  },
+  postedBy: string
+): Promise<EventsResponse> => {
   try {
-    const event = await db.query.schoolEvents.findFirst({
+    const school = await assertSchoolExists(data.schoolId);
+    if (!school) return { success: false, message: "School not found." };
+
+    const issues: string[] = [];
+    const rows: TSelectSchoolEvent[] = [];
+
+    await db.transaction(async (tx) => {
+      for (const e of data.events) {
+        try {
+          const [row] = await tx
+            .insert(schoolEvents)
+            .values({
+              schoolId: data.schoolId,
+              title: e.title.trim(),
+              description: e.description?.trim() ?? null,
+              category: e.category,
+              location: e.location?.trim() ?? null,
+              startDate: new Date(e.startDate),
+              endDate: new Date(e.endDate),
+              postedBy,
+            })
+            .returning();
+          rows.push(row);
+        } catch (err: any) {
+          issues.push(`${e.title}: ${err?.message ?? "insert failed"}`);
+        }
+      }
+    });
+
+    return {
+      success: rows.length > 0,
+      message: `Created ${rows.length} of ${data.events.length} event(s).`,
+      events: rows,
+      count: rows.length,
+      issues: issues.length ? issues : undefined,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to bulk create events." };
+  }
+};
+
+// 3. Get by ID
+export const getSchoolEventByIdService = async (
+  id: string
+): Promise<EventsResponse> => {
+  try {
+    const row = await db.query.schoolEvents.findFirst({
       where: eq(schoolEvents.id, id),
       with: {
-        school: true,
-        postedByUser: true,
+        school: { columns: { id: true, name: true } },
+        postedByUser: { columns: { id: true, name: true } },
       },
     });
-
-    if (!event) {
-      return { success: false, message: "School event not found." };
-    }
-
-    return { success: true, data: event };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    if (!row) return { success: false, message: "Event not found." };
+    return { success: true, message: "Event retrieved.", event: row as any };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to fetch event." };
   }
 };
 
-export const getSchoolEventsBySchoolService = async (schoolId: string) => {
+// 4. List for school (filters: category, range, upcoming)
+export const listSchoolEventsForSchoolService = async (
+  schoolId: string,
+  opts: {
+    category?: EventCategory;
+    from?: string;
+    to?: string;
+    upcomingOnly?: boolean;
+    page: number;
+    limit: number;
+  }
+): Promise<EventsResponse> => {
   try {
-    const events = await db.query.schoolEvents.findMany({
-      where: eq(schoolEvents.schoolId, schoolId),
-      with: {
-        postedByUser: true,
-      },
-      orderBy: [desc(schoolEvents.startDate)],
-    });
+    const filters: any[] = [eq(schoolEvents.schoolId, schoolId)];
+    if (opts.category) filters.push(eq(schoolEvents.category, opts.category));
+    if (opts.from) filters.push(gte(schoolEvents.startDate, new Date(opts.from)));
+    if (opts.to) filters.push(lte(schoolEvents.endDate, new Date(opts.to)));
+    if (opts.upcomingOnly) filters.push(gte(schoolEvents.endDate, now()));
 
-    return { success: true, data: events };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    const offset = (opts.page - 1) * opts.limit;
+
+    const [rows, [totals]] = await Promise.all([
+      db.query.schoolEvents.findMany({
+        where: and(...filters),
+        with: { postedByUser: { columns: { id: true, name: true } } },
+        orderBy: [asc(schoolEvents.startDate)],
+        limit: opts.limit,
+        offset,
+      }),
+      db.select({ c: count() }).from(schoolEvents).where(and(...filters)),
+    ]);
+
+    return {
+      success: true,
+      message: `${rows.length} event(s) on this page.`,
+      events: rows as any,
+      count: Number(totals?.c ?? 0),
+      stats: { page: opts.page, limit: opts.limit },
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list events." };
   }
 };
 
-export const getUpcomingSchoolEventsService = async (schoolId: string) => {
+// 5. Upcoming (within N days)
+export const listUpcomingSchoolEventsService = async (
+  schoolId: string,
+  withinDays: number,
+  limit: number
+): Promise<EventsResponse> => {
   try {
-    const currentDate = new Date();
-    const events = await db.query.schoolEvents.findMany({
+    const cutoff = new Date(now().getTime() + withinDays * 86_400_000);
+
+    const rows = await db.query.schoolEvents.findMany({
       where: and(
         eq(schoolEvents.schoolId, schoolId),
-        gte(schoolEvents.startDate, currentDate)
+        gte(schoolEvents.endDate, now()),
+        lte(schoolEvents.startDate, cutoff)
       ),
-      with: {
-        postedByUser: true,
-      },
       orderBy: [asc(schoolEvents.startDate)],
+      limit,
     });
 
-    return { success: true, data: events };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    return {
+      success: true,
+      message: `${rows.length} upcoming event(s) within ${withinDays} day(s).`,
+      events: rows,
+      count: rows.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list upcoming events." };
   }
 };
 
-export const getSchoolEventsByCategoryService = async (schoolId: string, category: any) => {
+// 6. List by category
+export const listSchoolEventsByCategoryService = async (
+  schoolId: string,
+  category: EventCategory
+): Promise<EventsResponse> => {
   try {
-    const events = await db.query.schoolEvents.findMany({
+    const rows = await db.query.schoolEvents.findMany({
       where: and(
         eq(schoolEvents.schoolId, schoolId),
         eq(schoolEvents.category, category)
       ),
-      with: {
-        postedByUser: true,
-      },
+      orderBy: [desc(schoolEvents.startDate)],
+    });
+    return {
+      success: true,
+      message: `${rows.length} ${category} event(s).`,
+      events: rows,
+      count: rows.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list events." };
+  }
+};
+
+// 7. List events in a date range
+export const listSchoolEventsInRangeService = async (
+  schoolId: string,
+  from: string,
+  to: string
+): Promise<EventsResponse> => {
+  try {
+    const rows = await db.query.schoolEvents.findMany({
+      where: and(
+        eq(schoolEvents.schoolId, schoolId),
+        gte(schoolEvents.endDate, new Date(from)),
+        lte(schoolEvents.startDate, new Date(to))
+      ),
+      orderBy: [asc(schoolEvents.startDate)],
+    });
+    return {
+      success: true,
+      message: `${rows.length} event(s) in range.`,
+      events: rows,
+      count: rows.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list events in range." };
+  }
+};
+
+// 8. Today's events
+export const getSchoolEventsTodayService = async (
+  schoolId: string
+): Promise<EventsResponse> => {
+  try {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+
+    const rows = await db.query.schoolEvents.findMany({
+      where: and(
+        eq(schoolEvents.schoolId, schoolId),
+        lte(schoolEvents.startDate, end),
+        gte(schoolEvents.endDate, start)
+      ),
       orderBy: [asc(schoolEvents.startDate)],
     });
 
-    return { success: true, data: events };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    return {
+      success: true,
+      message: `${rows.length} event(s) today.`,
+      events: rows,
+      count: rows.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to load today's events." };
   }
 };
 
-export const updateSchoolEventService = async (id: string, data: Partial<TInsertSchoolEvent>) => {
+// 9. Update
+export const updateSchoolEventService = async (
+  id: string,
+  patch: {
+    title?: string;
+    description?: string | null;
+    category?: EventCategory;
+    location?: string | null;
+    startDate?: string;
+    endDate?: string;
+  }
+): Promise<EventsResponse> => {
   try {
-    const [updatedEvent] = await db
+    const existing = await db.query.schoolEvents.findFirst({
+      where: eq(schoolEvents.id, id),
+    });
+    if (!existing) return { success: false, message: "Event not found." };
+
+    const newStart = patch.startDate ? new Date(patch.startDate) : new Date(existing.startDate);
+    const newEnd = patch.endDate ? new Date(patch.endDate) : new Date(existing.endDate);
+    if (newEnd < newStart) {
+      return { success: false, message: "endDate must be on or after startDate." };
+    }
+
+    const [row] = await db
       .update(schoolEvents)
-      .set(data)
+      .set({
+        ...(patch.title !== undefined && { title: patch.title.trim() }),
+        ...(patch.description !== undefined && {
+          description: patch.description?.trim() ?? null,
+        }),
+        ...(patch.category !== undefined && { category: patch.category }),
+        ...(patch.location !== undefined && { location: patch.location?.trim() ?? null }),
+        ...(patch.startDate !== undefined && { startDate: newStart }),
+        ...(patch.endDate !== undefined && { endDate: newEnd }),
+      })
       .where(eq(schoolEvents.id, id))
       .returning();
 
-    if (!updatedEvent) {
-      return { success: false, message: "School event not found for update." };
-    }
-
-    return {
-      success: true,
-      message: "School event successfully updated.",
-      data: updatedEvent,
-    };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    return { success: true, message: "Event updated.", event: row };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to update event." };
   }
 };
 
-export const deleteSchoolEventService = async (id: string) => {
+// 10. Delete
+export const deleteSchoolEventService = async (
+  id: string
+): Promise<EventsResponse> => {
   try {
-    const [deletedEvent] = await db
-      .delete(schoolEvents)
-      .where(eq(schoolEvents.id, id))
+    const [row] = await db.delete(schoolEvents).where(eq(schoolEvents.id, id)).returning();
+    if (!row) return { success: false, message: "Event not found." };
+    return { success: true, message: "Event deleted.", event: row };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to delete event." };
+  }
+};
+
+// 11. Calendar view (grouped by month)
+export const getSchoolEventsCalendarService = async (
+  schoolId: string,
+  opts: { from?: string; to?: string } = {}
+): Promise<EventsResponse> => {
+  try {
+    const filters: any[] = [eq(schoolEvents.schoolId, schoolId)];
+    if (opts.from) filters.push(gte(schoolEvents.endDate, new Date(opts.from)));
+    if (opts.to) filters.push(lte(schoolEvents.startDate, new Date(opts.to)));
+
+    const rows = await db.query.schoolEvents.findMany({
+      where: and(...filters),
+      orderBy: [asc(schoolEvents.startDate)],
+    });
+
+    const grouped = new Map<string, TSelectSchoolEvent[]>();
+    for (const e of rows) {
+      const ym = toIso(e.startDate).slice(0, 7); // "YYYY-MM"
+      const arr = grouped.get(ym) ?? [];
+      arr.push(e);
+      grouped.set(ym, arr);
+    }
+
+    const calendar = [...grouped.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, events]) => ({
+        month,
+        label: monthLabel(month),
+        events: events.map((e) => ({
+          id: e.id,
+          title: e.title,
+          category: e.category,
+          startDate: toIso(e.startDate),
+          endDate: toIso(e.endDate),
+          location: e.location,
+        })),
+      }));
+
+    return {
+      success: true,
+      message: `Calendar across ${calendar.length} month(s).`,
+      calendar,
+      count: rows.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to build calendar." };
+  }
+};
+
+// 12. Stats
+export const getSchoolEventStatsService = async (
+  schoolId: string
+): Promise<EventsResponse> => {
+  try {
+    const [total] = await db
+      .select({ c: count() })
+      .from(schoolEvents)
+      .where(eq(schoolEvents.schoolId, schoolId));
+
+    const [upcoming] = await db
+      .select({ c: count() })
+      .from(schoolEvents)
+      .where(and(eq(schoolEvents.schoolId, schoolId), gte(schoolEvents.endDate, now())));
+
+    const byCategory = await db
+      .select({ category: schoolEvents.category, c: count() })
+      .from(schoolEvents)
+      .where(eq(schoolEvents.schoolId, schoolId))
+      .groupBy(schoolEvents.category);
+
+    return {
+      success: true,
+      message: `${total?.c ?? 0} event(s), ${upcoming?.c ?? 0} upcoming.`,
+      stats: {
+        total: Number(total?.c ?? 0),
+        upcoming: Number(upcoming?.c ?? 0),
+        past: Number(total?.c ?? 0) - Number(upcoming?.c ?? 0),
+        byCategory: byCategory.reduce<Record<string, number>>((acc, r) => {
+          acc[r.category] = Number(r.c);
+          return acc;
+        }, {}),
+      },
+      count: Number(total?.c ?? 0),
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to compute stats." };
+  }
+};
+
+// ================================================================
+// CO-CURRICULAR ACTIVITIES — 10 services
+// ================================================================
+
+// 13. Create activity
+export const createActivityService = async (data: {
+  schoolId: string;
+  name: string;
+  category: string;
+  patronTeacherId?: string | null;
+}): Promise<EventsResponse> => {
+  try {
+    const school = await assertSchoolExists(data.schoolId);
+    if (!school) return { success: false, message: "School not found." };
+
+    if (data.patronTeacherId) {
+      const teacher = await db.query.users.findFirst({
+        where: and(
+          eq(users.id, data.patronTeacherId),
+          eq(users.schoolId, data.schoolId),
+          isNull(users.deletedAt)
+        ),
+      });
+      if (!teacher) return { success: false, message: "Patron teacher not found in this school." };
+    }
+
+    const [row] = await db
+      .insert(coCurricularActivities)
+      .values({
+        schoolId: data.schoolId,
+        name: data.name.trim(),
+        category: data.category.trim(),
+        patronTeacherId: data.patronTeacherId ?? null,
+      })
       .returning();
 
-    if (!deletedEvent) {
-      return { success: false, message: "School event not found for deletion." };
-    }
-
-    return { success: true, message: "School event successfully deleted." };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    return { success: true, message: `Activity "${row.name}" created.`, activity: row };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to create activity." };
   }
 };
 
-
-// ==========================================
-// CO-CURRICULAR ACTIVITIES SERVICES
-// ==========================================
-
-export const createCoCurricularActivityService = async (data: TInsertCoCurricularActivity) => {
+// 14. Get by ID
+export const getActivityByIdService = async (
+  id: string
+): Promise<EventsResponse> => {
   try {
-    const [newActivity] = await db.insert(coCurricularActivities).values(data).returning();
-    return {
-      success: true,
-      message: "Co-curricular activity successfully created.",
-      data: newActivity,
-    };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
-  }
-};
-
-export const getCoCurricularActivityByIdService = async (id: string) => {
-  try {
-    const activity = await db.query.coCurricularActivities.findFirst({
+    const row = await db.query.coCurricularActivities.findFirst({
       where: eq(coCurricularActivities.id, id),
       with: {
-        school: true,
-        patronTeacher: true,
-        memberships: {
-          with: {
-            student: true,
-            term: true,
-          },
-        },
+        school: { columns: { id: true, name: true } },
+        patronTeacher: { columns: { id: true, name: true, email: true } },
       },
     });
+    if (!row) return { success: false, message: "Activity not found." };
+    return { success: true, message: "Activity retrieved.", activity: row as any };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to fetch activity." };
+  }
+};
 
-    if (!activity) {
-      return { success: false, message: "Co-curricular activity not found." };
+// 15. List for school
+export const listActivitiesForSchoolService = async (
+  schoolId: string,
+  opts: { category?: string; page: number; limit: number }
+): Promise<EventsResponse> => {
+  try {
+    const filters: any[] = [eq(coCurricularActivities.schoolId, schoolId)];
+    if (opts.category) filters.push(eq(coCurricularActivities.category, opts.category));
+
+    const offset = (opts.page - 1) * opts.limit;
+
+    const [rows, [totals]] = await Promise.all([
+      db.query.coCurricularActivities.findMany({
+        where: and(...filters),
+        with: { patronTeacher: { columns: { id: true, name: true } } },
+        orderBy: [asc(coCurricularActivities.name)],
+        limit: opts.limit,
+        offset,
+      }),
+      db.select({ c: count() }).from(coCurricularActivities).where(and(...filters)),
+    ]);
+
+    return {
+      success: true,
+      message: `${rows.length} activity/activities on this page.`,
+      activities: rows as any,
+      count: Number(totals?.c ?? 0),
+      stats: { page: opts.page, limit: opts.limit },
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list activities." };
+  }
+};
+
+// 16. List by category
+export const listActivitiesByCategoryService = async (
+  schoolId: string,
+  category: string
+): Promise<EventsResponse> => {
+  try {
+    const rows = await db.query.coCurricularActivities.findMany({
+      where: and(
+        eq(coCurricularActivities.schoolId, schoolId),
+        eq(coCurricularActivities.category, category)
+      ),
+      orderBy: [asc(coCurricularActivities.name)],
+    });
+    return {
+      success: true,
+      message: `${rows.length} activity/activities in "${category}".`,
+      activities: rows,
+      count: rows.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list activities." };
+  }
+};
+
+// 17. List by patron
+export const listActivitiesByPatronService = async (
+  teacherId: string
+): Promise<EventsResponse> => {
+  try {
+    const rows = await db.query.coCurricularActivities.findMany({
+      where: eq(coCurricularActivities.patronTeacherId, teacherId),
+      orderBy: [asc(coCurricularActivities.name)],
+    });
+    return {
+      success: true,
+      message: `${rows.length} activity/activities under this patron.`,
+      activities: rows,
+      count: rows.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list activities." };
+  }
+};
+
+// 18. Update activity
+export const updateActivityService = async (
+  id: string,
+  patch: { name?: string; category?: string; patronTeacherId?: string | null }
+): Promise<EventsResponse> => {
+  try {
+    const existing = await db.query.coCurricularActivities.findFirst({
+      where: eq(coCurricularActivities.id, id),
+    });
+    if (!existing) return { success: false, message: "Activity not found." };
+
+    if (patch.patronTeacherId) {
+      const teacher = await db.query.users.findFirst({
+        where: and(
+          eq(users.id, patch.patronTeacherId),
+          eq(users.schoolId, existing.schoolId),
+          isNull(users.deletedAt)
+        ),
+      });
+      if (!teacher) return { success: false, message: "Patron teacher not found in this school." };
     }
 
-    return { success: true, data: activity };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
-  }
-};
-
-export const getCoCurricularActivitiesBySchoolService = async (schoolId: string) => {
-  try {
-    const activities = await db.query.coCurricularActivities.findMany({
-      where: eq(coCurricularActivities.schoolId, schoolId),
-      with: {
-        patronTeacher: true,
-      },
-    });
-
-    return { success: true, data: activities };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
-  }
-};
-
-export const updateCoCurricularActivityService = async (id: string, data: Partial<TInsertCoCurricularActivity>) => {
-  try {
-    const [updatedActivity] = await db
+    const [row] = await db
       .update(coCurricularActivities)
-      .set(data)
+      .set({
+        ...(patch.name !== undefined && { name: patch.name.trim() }),
+        ...(patch.category !== undefined && { category: patch.category.trim() }),
+        ...(patch.patronTeacherId !== undefined && {
+          patronTeacherId: patch.patronTeacherId,
+        }),
+      })
       .where(eq(coCurricularActivities.id, id))
       .returning();
 
-    if (!updatedActivity) {
-      return { success: false, message: "Co-curricular activity not found for update." };
-    }
-
-    return {
-      success: true,
-      message: "Co-curricular activity successfully updated.",
-      data: updatedActivity,
-    };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    return { success: true, message: "Activity updated.", activity: row };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to update activity." };
   }
 };
 
-export const deleteCoCurricularActivityService = async (id: string) => {
+// 19. Assign / unassign patron
+export const assignPatronService = async (
+  id: string,
+  patronTeacherId: string | null
+): Promise<EventsResponse> => {
   try {
-    const [deletedActivity] = await db
+    const existing = await db.query.coCurricularActivities.findFirst({
+      where: eq(coCurricularActivities.id, id),
+    });
+    if (!existing) return { success: false, message: "Activity not found." };
+
+    if (patronTeacherId) {
+      const teacher = await db.query.users.findFirst({
+        where: and(
+          eq(users.id, patronTeacherId),
+          eq(users.schoolId, existing.schoolId),
+          isNull(users.deletedAt)
+        ),
+      });
+      if (!teacher) return { success: false, message: "Patron teacher not found in this school." };
+    }
+
+    const [row] = await db
+      .update(coCurricularActivities)
+      .set({ patronTeacherId })
+      .where(eq(coCurricularActivities.id, id))
+      .returning();
+
+    return {
+      success: true,
+      message: patronTeacherId ? "Patron assigned." : "Patron unassigned.",
+      activity: row,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to assign patron." };
+  }
+};
+
+// 20. Delete activity (cascades to memberships)
+export const deleteActivityService = async (
+  id: string
+): Promise<EventsResponse> => {
+  try {
+    const [row] = await db
       .delete(coCurricularActivities)
       .where(eq(coCurricularActivities.id, id))
       .returning();
-
-    if (!deletedActivity) {
-      return { success: false, message: "Co-curricular activity not found for deletion." };
-    }
-
-    return { success: true, message: "Co-curricular activity successfully deleted." };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    if (!row) return { success: false, message: "Activity not found." };
+    return { success: true, message: "Activity deleted.", activity: row };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to delete activity." };
   }
 };
 
-
-// ==========================================
-// STUDENT ACTIVITY MEMBERSHIPS SERVICES
-// ==========================================
-
-export const enrollStudentInActivityService = async (data: TInsertStudentActivityMembership) => {
+// 21. List distinct categories (useful for filters / UI)
+export const listActivityCategoriesService = async (
+  schoolId: string
+): Promise<EventsResponse> => {
   try {
-    const [membership] = await db.insert(studentActivityMemberships).values(data).returning();
+    const rows = await db
+      .selectDistinct({ category: coCurricularActivities.category })
+      .from(coCurricularActivities)
+      .where(eq(coCurricularActivities.schoolId, schoolId))
+      .orderBy(asc(coCurricularActivities.category));
+
     return {
       success: true,
-      message: "Student successfully enrolled in co-curricular activity.",
-      data: membership,
+      message: `${rows.length} distinct categor${rows.length === 1 ? "y" : "ies"}.`,
+      stats: { categories: rows.map((r) => r.category) },
+      count: rows.length,
     };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list categories." };
   }
 };
 
-export const bulkEnrollStudentsService = async (
-  activityId: string,
-  termId: string,
-  studentIds: string[]
-) => {
+// 22. Activity stats (member count + roles)
+export const getActivityStatsService = async (
+  id: string
+): Promise<EventsResponse> => {
   try {
-    if (!studentIds || studentIds.length === 0) {
-      return { success: false, message: "No students provided for bulk enrollment." };
-    }
+    const activity = await db.query.coCurricularActivities.findFirst({
+      where: eq(coCurricularActivities.id, id),
+    });
+    if (!activity) return { success: false, message: "Activity not found." };
 
-    const enrollmentValues = studentIds.map((studentId) => ({
-      studentId,
-      activityId,
-      termId,
-    }));
+    const [total] = await db
+      .select({ c: count() })
+      .from(studentActivityMemberships)
+      .where(eq(studentActivityMemberships.activityId, id));
 
-    const insertedMemberships = await db
+    const byTerm = await db
+      .select({ termId: studentActivityMemberships.termId, c: count() })
+      .from(studentActivityMemberships)
+      .where(eq(studentActivityMemberships.activityId, id))
+      .groupBy(studentActivityMemberships.termId);
+
+    return {
+      success: true,
+      message: `${total?.c ?? 0} membership(s) across ${byTerm.length} term(s).`,
+      stats: {
+        totalMemberships: Number(total?.c ?? 0),
+        byTerm: byTerm.reduce<Record<string, number>>((acc, r) => {
+          acc[r.termId] = Number(r.c);
+          return acc;
+        }, {}),
+      },
+      count: Number(total?.c ?? 0),
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to compute stats." };
+  }
+};
+
+// ================================================================
+// STUDENT ACTIVITY MEMBERSHIPS — 10 services
+// ================================================================
+
+// 23. Add one student (upsert on studentId+activityId+termId)
+export const addStudentToActivityService = async (data: {
+  schoolId: string;
+  studentId: string;
+  activityId: string;
+  termId: string;
+  performanceRole?: string | null;
+}): Promise<EventsResponse> => {
+  try {
+    const [student, activity, term] = await Promise.all([
+      db.query.students.findFirst({
+        where: and(eq(students.id, data.studentId), eq(students.schoolId, data.schoolId)),
+      }),
+      db.query.coCurricularActivities.findFirst({
+        where: and(
+          eq(coCurricularActivities.id, data.activityId),
+          eq(coCurricularActivities.schoolId, data.schoolId)
+        ),
+      }),
+      db.query.academicTerms.findFirst({
+        where: and(eq(academicTerms.id, data.termId), eq(academicTerms.schoolId, data.schoolId)),
+      }),
+    ]);
+
+    if (!student) return { success: false, message: "Student not found in this school." };
+    if (!activity) return { success: false, message: "Activity not found in this school." };
+    if (!term) return { success: false, message: "Term not found in this school." };
+
+    const [row] = await db
       .insert(studentActivityMemberships)
-      .values(enrollmentValues)
+      .values({
+        schoolId: data.schoolId,
+        studentId: data.studentId,
+        activityId: data.activityId,
+        termId: data.termId,
+        performanceRole: data.performanceRole?.trim() ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [
+          studentActivityMemberships.studentId,
+          studentActivityMemberships.activityId,
+          studentActivityMemberships.termId,
+        ],
+        set: {
+          performanceRole: data.performanceRole?.trim() ?? null,
+        },
+      })
       .returning();
 
+    return { success: true, message: "Student added to activity.", membership: row };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to add student." };
+  }
+};
+
+// 24. Bulk add (all student IDs must belong to the school)
+export const bulkAddStudentsToActivityService = async (data: {
+  schoolId: string;
+  activityId: string;
+  termId: string;
+  studentIds: string[];
+  performanceRole?: string | null;
+}): Promise<EventsResponse> => {
+  try {
+    const activity = await db.query.coCurricularActivities.findFirst({
+      where: and(
+        eq(coCurricularActivities.id, data.activityId),
+        eq(coCurricularActivities.schoolId, data.schoolId)
+      ),
+    });
+    if (!activity) return { success: false, message: "Activity not found in this school." };
+
+    const term = await db.query.academicTerms.findFirst({
+      where: and(eq(academicTerms.id, data.termId), eq(academicTerms.schoolId, data.schoolId)),
+    });
+    if (!term) return { success: false, message: "Term not found in this school." };
+
+    // Validate all students belong to the school
+    const validStudents = await db.query.students.findMany({
+      where: and(
+        eq(students.schoolId, data.schoolId),
+        inArray(students.id, data.studentIds)
+      ),
+      columns: { id: true },
+    });
+    const validIds = new Set(validStudents.map((s) => s.id));
+    const invalidIds = data.studentIds.filter((id) => !validIds.has(id));
+
+    if (validIds.size === 0) {
+      return {
+        success: false,
+        message: "None of the provided student IDs belong to this school.",
+        issues: invalidIds.slice(0, 20),
+      };
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(studentActivityMemberships)
+        .values(
+          [...validIds].map((sid) => ({
+            schoolId: data.schoolId,
+            studentId: sid,
+            activityId: data.activityId,
+            termId: data.termId,
+            performanceRole: data.performanceRole?.trim() ?? null,
+          }))
+        )
+        .onConflictDoUpdate({
+          target: [
+            studentActivityMemberships.studentId,
+            studentActivityMemberships.activityId,
+            studentActivityMemberships.termId,
+          ],
+          set: {
+            performanceRole: data.performanceRole?.trim() ?? null,
+          },
+        })
+        .returning();
+      return inserted;
+    });
+
     return {
       success: true,
-      message: `${insertedMemberships.length} students successfully enrolled in the activity.`,
-      data: insertedMemberships,
+      message: `Added/updated ${result.length} student(s).${
+        invalidIds.length ? ` ${invalidIds.length} skipped (not in this school).` : ""
+      }`,
+      memberships: result,
+      count: result.length,
+      issues: invalidIds.length ? invalidIds.slice(0, 20) : undefined,
     };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to bulk add students." };
   }
 };
 
-export const getMembershipsByActivityService = async (activityId: string) => {
+// 25. Get membership by ID
+export const getMembershipByIdService = async (
+  id: string
+): Promise<EventsResponse> => {
   try {
-    const memberships = await db.query.studentActivityMemberships.findMany({
-      where: eq(studentActivityMemberships.activityId, activityId),
+    const row = await db.query.studentActivityMemberships.findFirst({
+      where: eq(studentActivityMemberships.id, id),
       with: {
-        student: true,
-        term: true,
+        student: { columns: { id: true, admissionNumber: true, firstName: true, lastName: true } },
+        activity: { columns: { id: true, name: true, category: true } },
+        term: { columns: { id: true, termName: true, academicYear: true } },
       },
     });
-
-    return { success: true, data: memberships };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    if (!row) return { success: false, message: "Membership not found." };
+    return { success: true, message: "Membership retrieved.", membership: row as any };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to fetch membership." };
   }
 };
 
-export const getMembershipsByStudentService = async (studentId: string) => {
+// 26. List activities for a student
+export const listActivitiesForStudentService = async (
+  studentId: string,
+  termId?: string
+): Promise<EventsResponse> => {
   try {
-    const memberships = await db.query.studentActivityMemberships.findMany({
-      where: eq(studentActivityMemberships.studentId, studentId),
+    const filters: any[] = [eq(studentActivityMemberships.studentId, studentId)];
+    if (termId) filters.push(eq(studentActivityMemberships.termId, termId));
+
+    const rows = await db.query.studentActivityMemberships.findMany({
+      where: and(...filters),
       with: {
-        activity: true,
-        term: true,
+        activity: { columns: { id: true, name: true, category: true } },
+        term: { columns: { id: true, termName: true, academicYear: true } },
       },
+      orderBy: [desc(studentActivityMemberships.schoolId)],
     });
 
-    return { success: true, data: memberships };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    return {
+      success: true,
+      message: `${rows.length} activity/activities for this student.`,
+      memberships: rows as any,
+      count: rows.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list student activities." };
   }
 };
 
-export const updateMembershipService = async (id: string, data: Partial<TInsertStudentActivityMembership>) => {
+// 27. List memberships for an activity
+export const listMembershipsForActivityService = async (
+  activityId: string,
+  opts: { termId?: string; page: number; limit: number }
+): Promise<EventsResponse> => {
   try {
-    const [updatedMembership] = await db
+    const filters: any[] = [eq(studentActivityMemberships.activityId, activityId)];
+    if (opts.termId) filters.push(eq(studentActivityMemberships.termId, opts.termId));
+
+    const offset = (opts.page - 1) * opts.limit;
+
+    const [rows, [totals]] = await Promise.all([
+      db.query.studentActivityMemberships.findMany({
+        where: and(...filters),
+        with: {
+          student: {
+            columns: {
+              id: true,
+              admissionNumber: true,
+              firstName: true,
+              lastName: true,
+              classId: true,
+            },
+          },
+          term: { columns: { id: true, termName: true, academicYear: true } },
+        },
+        orderBy: [asc(studentActivityMemberships.schoolId)],
+        limit: opts.limit,
+        offset,
+      }),
+      db.select({ c: count() }).from(studentActivityMemberships).where(and(...filters)),
+    ]);
+
+    return {
+      success: true,
+      message: `${rows.length} member(s) on this page.`,
+      memberships: rows as any,
+      count: Number(totals?.c ?? 0),
+      stats: { page: opts.page, limit: opts.limit },
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list members." };
+  }
+};
+
+// 28. List memberships for a term (school-wide)
+export const listMembershipsForTermService = async (
+  schoolId: string,
+  termId: string,
+  opts: { page: number; limit: number }
+): Promise<EventsResponse> => {
+  try {
+    const offset = (opts.page - 1) * opts.limit;
+    const filters = and(
+      eq(studentActivityMemberships.schoolId, schoolId),
+      eq(studentActivityMemberships.termId, termId)
+    );
+
+    const [rows, [totals]] = await Promise.all([
+      db.query.studentActivityMemberships.findMany({
+        where: filters,
+        with: {
+          student: { columns: { id: true, firstName: true, lastName: true } },
+          activity: { columns: { id: true, name: true, category: true } },
+        },
+        orderBy: [asc(studentActivityMemberships.activityId)],
+        limit: opts.limit,
+        offset,
+      }),
+      db.select({ c: count() }).from(studentActivityMemberships).where(filters),
+    ]);
+
+    return {
+      success: true,
+      message: `${rows.length} membership(s) on this page.`,
+      memberships: rows as any,
+      count: Number(totals?.c ?? 0),
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list memberships." };
+  }
+};
+
+// 29. Update performance role
+export const updateMembershipRoleService = async (
+  id: string,
+  performanceRole: string | null
+): Promise<EventsResponse> => {
+  try {
+    const existing = await db.query.studentActivityMemberships.findFirst({
+      where: eq(studentActivityMemberships.id, id),
+    });
+    if (!existing) return { success: false, message: "Membership not found." };
+
+    const [row] = await db
       .update(studentActivityMemberships)
-      .set(data)
+      .set({ performanceRole: performanceRole?.trim() ?? null })
       .where(eq(studentActivityMemberships.id, id))
       .returning();
 
-    if (!updatedMembership) {
-      return { success: false, message: "Membership record not found for update." };
-    }
-
-    return {
-      success: true,
-      message: "Membership record successfully updated.",
-      data: updatedMembership,
-    };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    return { success: true, message: "Performance role updated.", membership: row };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to update role." };
   }
 };
 
-export const removeStudentMembershipService = async (id: string) => {
+// 30. Remove one student from an activity (by membership ID)
+export const removeStudentFromActivityService = async (
+  id: string
+): Promise<EventsResponse> => {
   try {
-    const [deletedMembership] = await db
+    const [row] = await db
       .delete(studentActivityMemberships)
       .where(eq(studentActivityMemberships.id, id))
       .returning();
+    if (!row) return { success: false, message: "Membership not found." };
+    return { success: true, message: "Student removed from activity.", membership: row };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to remove student." };
+  }
+};
 
-    if (!deletedMembership) {
-      return { success: false, message: "Membership record not found for removal." };
+// 31. List students NOT in an activity (for the "add members" picker)
+export const listStudentsNotInActivityService = async (
+  schoolId: string,
+  activityId: string,
+  termId: string
+): Promise<EventsResponse> => {
+  try {
+    const activity = await db.query.coCurricularActivities.findFirst({
+      where: and(
+        eq(coCurricularActivities.id, activityId),
+        eq(coCurricularActivities.schoolId, schoolId)
+      ),
+    });
+    if (!activity) return { success: false, message: "Activity not found in this school." };
+
+    const inActivity = await db.query.studentActivityMemberships.findMany({
+      where: and(
+        eq(studentActivityMemberships.activityId, activityId),
+        eq(studentActivityMemberships.termId, termId)
+      ),
+      columns: { studentId: true },
+    });
+    const excluded = new Set(inActivity.map((m) => m.studentId));
+
+    const allStudents = await db.query.students.findMany({
+      where: and(
+        eq(students.schoolId, schoolId),
+        eq(students.isEnrolled, true),
+        isNull(students.deletedAt)
+      ),
+      columns: {
+        id: true,
+        admissionNumber: true,
+        firstName: true,
+        lastName: true,
+        classId: true,
+      },
+      orderBy: [asc(students.lastName), asc(students.firstName)],
+    });
+
+    const notIn = allStudents.filter((s) => !excluded.has(s.id));
+
+    return {
+      success: true,
+      message: `${notIn.length} student(s) not yet in this activity.`,
+      stats: { students: notIn },
+      count: notIn.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to list eligible students." };
+  }
+};
+
+// 32. Student activity summary (count + breakdown)
+export const getStudentActivitySummaryService = async (
+  studentId: string,
+  termId?: string
+): Promise<EventsResponse> => {
+  try {
+    const filters: any[] = [eq(studentActivityMemberships.studentId, studentId)];
+    if (termId) filters.push(eq(studentActivityMemberships.termId, termId));
+
+    const rows = await db.query.studentActivityMemberships.findMany({
+      where: and(...filters),
+      with: {
+        activity: { columns: { id: true, name: true, category: true } },
+        term: { columns: { id: true, termName: true, academicYear: true } },
+      },
+    });
+
+    const byCategory: Record<string, number> = {};
+    for (const r of rows) {
+      const cat = (r as any).activity?.category ?? "Unknown";
+      byCategory[cat] = (byCategory[cat] ?? 0) + 1;
     }
 
-    return { success: true, message: "Student successfully removed from activity." };
-  } catch (error: any) {
-    return { success: false, message: formatDatabaseError(error.message) };
+    return {
+      success: true,
+      message: `${rows.length} activity/activities across ${Object.keys(byCategory).length} categor${Object.keys(byCategory).length === 1 ? "y" : "ies"}.`,
+      stats: {
+        totalActivities: rows.length,
+        byCategory,
+        activities: rows.map((r) => ({
+          membershipId: r.id,
+          activityId: r.activityId,
+          activityName: (r as any).activity?.name,
+          category: (r as any).activity?.category,
+          termId: r.termId,
+          performanceRole: r.performanceRole,
+        })),
+      },
+      count: rows.length,
+    };
+  } catch (e: any) {
+    return { success: false, message: e?.message || "Failed to compute summary." };
   }
 };

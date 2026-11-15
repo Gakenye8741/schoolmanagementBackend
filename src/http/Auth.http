@@ -170,8 +170,8 @@ POST {{baseUrl}}/login
 Content-Type: {{contentType}}
 
 {
-  "identifier": "pat.parent@school.test",
-  "password": "ParentPass123"
+  "identifier": "{{superAdminEmail}}",
+  "password": "{{superAdminPassword}}"
 }
 
 

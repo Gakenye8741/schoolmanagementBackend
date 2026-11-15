@@ -1,0 +1,299 @@
+@baseUrl = http://localhost:5000/api
+@disciplineUrl = {{baseUrl}}/discipline
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@studentId = 7b004352-5dc1-438a-933b-21be82c43ab8
+@studentId2 = 00000000-0000-0000-0000-000000000002
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+
+### 0.1 Login as teacher/admin
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+# ================================================================
+# 1. RECORD INCIDENTS
+# ================================================================
+
+### 1.1 Record a Merit (auto-notifies guardians)
+# @name recordMerit
+POST {{disciplineUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "incidentType": "Merit",
+  "description": "Helped a junior student find their lost bag during lunch break. Showed great kindness.",
+  "actionTaken": "Public recognition in assembly",
+  "notify": true
+}
+
+### Captured
+@incidentId = 94d76819-6b2d-428a-9366-e2b7640cb4dd
+
+### 1.2 Record a Warning
+# @name recordWarning
+POST {{disciplineUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "incidentType": "Warning",
+  "description": "Repeatedly talking during Mathematics lesson despite being asked to stop twice.",
+  "actionTaken": "Verbal warning issued, parents informed"
+}
+
+### 1.3 Record a Detention
+# @name recordDetention
+POST {{disciplineUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "incidentType": "Detention",
+  "description": "Caught using a mobile phone during exam preparation class.",
+  "actionTaken": "Detention on Friday, 3:30 PM to 5:00 PM"
+}
+
+### 1.4 Record a Late-coming incident
+POST {{disciplineUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "incidentType": "Late-coming",
+  "description": "Arrived at 9:15 AM, 45 minutes after school start.",
+  "actionTaken": "Recorded in late-comers register"
+}
+
+### 1.5 Record a Suspension
+POST {{disciplineUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "incidentType": "Suspension",
+  "description": "Physical altercation with another student. Both students involved.",
+  "actionTaken": "3-day suspension starting tomorrow, parents invited for a meeting"
+}
+
+### 1.6 Bulk record late-comers (multiple students at once)
+POST {{disciplineUrl}}/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "notify": true,
+  "incidents": [
+    {
+      "studentId": "{{studentId}}",
+      "incidentType": "Late-coming",
+      "description": "Arrived at 9:20 AM on 2026-11-07.",
+      "actionTaken": "Recorded"
+    },
+    {
+      "studentId": "{{studentId}}",
+      "incidentType": "Late-coming",
+      "description": "Arrived at 9:30 AM on 2026-11-07.",
+      "actionTaken": "Recorded"
+    }
+  ]
+}
+
+# ================================================================
+# 2. READS
+# ================================================================
+
+### 2.1 Get incident by ID
+GET {{disciplineUrl}}/{{incidentId}}
+
+### 2.2 List incidents for a student
+GET {{disciplineUrl}}/student/{{studentId}}
+
+### 2.3 List incidents for a student — filtered by date range
+GET {{disciplineUrl}}/student/{{studentId}}?fromDate=2026-11-01T00:00:00Z&toDate=2026-11-30T23:59:59Z
+
+### 2.4 List incidents for a student — filtered by type (Merit only)
+GET {{disciplineUrl}}/student/{{studentId}}?type=Merit
+
+### 2.5 List incidents for a class
+GET {{disciplineUrl}}/class/{{classId}}
+
+### 2.6 List incidents for a class — filtered by date range
+GET {{disciplineUrl}}/class/{{classId}}?fromDate=2026-11-01T00:00:00Z&toDate=2026-11-30T23:59:59Z
+
+### 2.7 List incidents for the school
+GET {{disciplineUrl}}/school/{{schoolId}}
+
+### 2.8 List incidents for the school — filtered by type
+GET {{disciplineUrl}}/school/{{schoolId}}?type=Detention
+
+### 2.9 List incidents for the school — only not-yet-notified
+GET {{disciplineUrl}}/school/{{schoolId}}?parentNotified=false
+
+### 2.10 List incidents by type (school-wide)
+GET {{disciplineUrl}}/school/{{schoolId}}/by-type?type=Merit
+
+### 2.11 List incidents by date range (school-wide)
+GET {{disciplineUrl}}/school/{{schoolId}}/by-date-range?fromDate=2026-11-01T00:00:00Z&toDate=2026-11-30T23:59:59Z
+
+# ================================================================
+# 3. UPDATES
+# ================================================================
+
+### 3.1 Update incident description / action
+PUT {{disciplineUrl}}/{{incidentId}}
+Content-Type: application/json
+
+{
+  "actionTaken": "Public recognition in assembly + certificate awarded",
+  "description": "Helped a junior student find their lost bag. Certificate awarded in Friday assembly."
+}
+
+### 3.2 Mark as parent-notified (e.g. after a phone call)
+PATCH {{disciplineUrl}}/{{recordWarning.response.body.$.record.id}}/mark-notified
+
+### 3.3 Update incident type (reclassify)
+PUT {{disciplineUrl}}/{{recordWarning.response.body.$.record.id}}
+Content-Type: application/json
+
+{
+  "incidentType": "Late-coming"
+}
+
+# ================================================================
+# 4. STUDENT SUMMARY
+# ================================================================
+
+### 4.1 Student discipline summary
+GET {{disciplineUrl}}/student/{{studentId}}/summary
+
+### 4.2 Student discipline summary (the other student)
+GET {{disciplineUrl}}/student/{{studentId2}}/summary
+
+# ================================================================
+# 5. CLASS & SCHOOL ANALYTICS
+# ================================================================
+
+### 5.1 Class discipline summary (with top offenders)
+GET {{disciplineUrl}}/class/{{classId}}/summary
+
+### 5.2 School discipline stats
+GET {{disciplineUrl}}/school/{{schoolId}}/stats
+
+### 5.3 School discipline stats — filtered by date
+GET {{disciplineUrl}}/school/{{schoolId}}/stats?fromDate=2026-11-01T00:00:00Z&toDate=2026-11-30T23:59:59Z
+
+### 5.4 Discipline trend (last 30 days)
+GET {{disciplineUrl}}/school/{{schoolId}}/trend
+
+### 5.5 Discipline trend (last 90 days)
+GET {{disciplineUrl}}/school/{{schoolId}}/trend?days=90
+
+### 5.6 Merit students (students with positive records)
+GET {{disciplineUrl}}/school/{{schoolId}}/merits
+
+# ================================================================
+# 6. NEGATIVE TESTS
+# ================================================================
+
+### 6.1 Record with invalid incident type — expect 400
+POST {{disciplineUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "incidentType": "Expulsion",
+  "description": "Test"
+}
+
+### 6.2 Record with short description — expect 400
+POST {{disciplineUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "incidentType": "Warning",
+  "description": "X"
+}
+
+### 6.3 Record with invalid student ID — expect 400
+POST {{disciplineUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "not-a-uuid",
+  "incidentType": "Warning",
+  "description": "Valid description here"
+}
+
+### 6.4 Record for student not in this school — expect 400
+POST {{disciplineUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "00000000-0000-0000-0000-000000000099",
+  "incidentType": "Warning",
+  "description": "This student does not belong to this school"
+}
+
+### 6.5 Bulk record with empty array — expect 400
+POST {{disciplineUrl}}/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "incidents": []
+}
+
+### 6.6 Bulk record with duplicate student IDs (allowed — just multiple incidents)
+POST {{disciplineUrl}}/bulk
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "incidents": [
+    {
+      "studentId": "{{studentId}}",
+      "incidentType": "Late-coming",
+      "description": "Late on Monday"
+    },
+    {
+      "studentId": "{{studentId}}",
+      "incidentType": "Late-coming",
+      "description": "Late on Tuesday"
+    }
+  ]
+}
+
+### 6.7 Update with no fields — expect 400
+PUT {{disciplineUrl}}/{{incidentId}}
+Content-Type: application/json
+
+{}
+
+### 6.8 Get nonexistent incident — expect 404
+GET {{disciplineUrl}}/00000000-0000-0000-0000-000000000099
+
+### 6.9 List incidents by type with invalid type — expect 400
+GET {{disciplineUrl}}/school/{{schoolId}}/by-type?type=Expulsion
+
+### 6.10 List incidents by date range with invalid date — expect 400
+GET {{disciplineUrl}}/school/{{schoolId}}/by-date-range?fromDate=not-a-date&toDate=2026-11-30T23:59:59Z
+
+### 6.11 List incidents by date range with inverted dates — expect 400
+GET {{disciplineUrl}}/school/{{schoolId}}/by-date-range?fromDate=2026-12-31T23:59:59Z&toDate=2026-01-01T00:00:00Z

@@ -1,0 +1,79 @@
+@baseUrl = http://localhost:5000/api
+@curUrl = {{baseUrl}}/curriculum
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@subjectId = 59027619-15f8-411b-9646-cbbd2fac02bb
+@gradeLevelId = 7d976448-4163-498c-b44a-452093eb121d
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+
+### Login
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+@token = {{login.response.body.$.data.tokens.accessToken}}
+
+### 1. Create a strand
+# @name strand
+POST {{curUrl}}/schools/{{schoolId}}/strands
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "subjectId": "{{subjectId}}",
+  "gradeLevelId": "{{gradeLevelId}}",
+  "name": "Numbers"
+}
+
+### 2. Bulk-create more strands
+POST {{curUrl}}/schools/{{schoolId}}/strands/bulk
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "subjectId": "{{subjectId}}",
+  "gradeLevelId": "{{gradeLevelId}}",
+  "strands": [
+    { "name": "Measurement" },
+    { "name": "Geometry" },
+    { "name": "Data Handling" }
+  ]
+}
+
+### 3. Bulk-create sub-strands under "Numbers"
+POST {{curUrl}}/schools/{{schoolId}}/sub-strands/bulk
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "strandId": "{{strand.response.body.$.strand.id}}",
+  "subStrands": [
+    { "name": "Whole Numbers", "learningOutcomes": "By the end, the learner should count, read and write whole numbers up to 1,000,000" },
+    { "name": "Fractions",     "learningOutcomes": "By the end, the learner should add, subtract and simplify fractions" },
+    { "name": "Decimals",      "learningOutcomes": "By the end, the learner should convert between fractions and decimals" }
+  ]
+}
+
+### 4. View the full tree (what a scheme-of-work UI needs)
+GET {{curUrl}}/schools/{{schoolId}}/tree?subjectId={{subjectId}}&gradeLevelId={{gradeLevelId}}
+Authorization: Bearer {{token}}
+
+### 5. Search sub-strands (what a "pick a sub-strand" autocomplete needs)
+GET {{curUrl}}/schools/{{schoolId}}/sub-strands/search?q=fraction
+Authorization: Bearer {{token}}
+
+### 6. Curriculum stats
+GET {{curUrl}}/schools/{{schoolId}}/stats
+Authorization: Bearer {{token}}
+
+### 7. Coverage (returns 0% until schemes of work exist)
+GET {{curUrl}}/schools/{{schoolId}}/coverage?subjectId={{subjectId}}&gradeLevelId={{gradeLevelId}}&termId={{termId}}
+Authorization: Bearer {{token}}

@@ -1,30 +1,228 @@
-import { Router } from 'express';
-import * as userController from './users.controller';
-import { adminAuth, adminOrTeacherAuth, anyAuthenticatedUser } from '../../middleware/bearAuth';
+// src/services/users/users.route.ts
+import { Router } from "express";
 
-const userRouter = Router();
+import {
+  createUserController,
+  bulkCreateUsersController,
+  getUserByIdController,
+  listAllUsersController,
+  listUsersForSchoolController,
+  listUsersByRoleController,
+  searchUsersController,
+  updateUserController,
+  updateUserRoleController,
+  updateUserRolesController,
+  addUserRoleController,
+  removeUserRoleController,
+  activateUserController,
+  deactivateUserController,
+  bulkDeactivateUsersController,
+  bulkActivateUsersController,
+  resetUserPasswordController,
+  forcePasswordChangeController,
+  clearMustChangePasswordController,
+  softDeleteUserController,
+  restoreUserController,
+  listUserSessionsController,
+  revokeUserSessionController,
+  revokeAllUserSessionsController,
+  getUsersStatsController,
+  countUsersByRoleController,
+  getRecentlyActiveUsersController,
+  getNeverLoggedInUsersController,
+  exportUsersController,
+} from "./users.controller";
+import {
+  schoolManagementAuth,
+  superAdminAuth,
+} from "../../middleware/bearAuth";
 
-// userRouter protected with appropriate role-based authentication middleware
-userRouter.get('/', adminOrTeacherAuth, userController.getUsersController);
-userRouter.post('/', adminAuth, userController.createUserController);
+const usersRouter = Router();
 
-// Super admin global system-wide users route (placed before /:id to prevent path shadowing)
-userRouter.get('/super-admin/all', adminAuth, userController.getAllUsersBySuperAdminController);
+// ================================================================
+// SUPER ADMIN — system-wide user list
+// ================================================================
+usersRouter.get("/admin/users", superAdminAuth, listAllUsersController);
 
-userRouter.get('/email', adminAuth, userController.getUserByEmailController);
-userRouter.get('/teachers', adminOrTeacherAuth, userController.getTeachersBySchoolController);
-userRouter.get('/students', adminOrTeacherAuth, userController.getStudentsBySchoolIdController);
-// userRouter.get('/students/class/:classId', adminOrTeacherAuth, userController.getStudentsByClassController);
-userRouter.get('/check-admission', adminAuth, userController.checkAdmissionNumberController);
+// ================================================================
+// SCHOOL-SCOPED — create users
+// ================================================================
+usersRouter.post(
+  "/schools/:schoolId/users",
+  schoolManagementAuth,
+  createUserController
+);
+usersRouter.post(
+  "/schools/:schoolId/users/bulk",
+  schoolManagementAuth,
+  bulkCreateUsersController
+);
 
-userRouter.patch('/status/bulk', adminAuth, userController.bulkUpdateUserStatusController);
+// ================================================================
+// SCHOOL-SCOPED — read
+// (static sub-paths BEFORE the parameterised /:schoolId/users)
+// ================================================================
+usersRouter.get(
+  "/schools/:schoolId/users/stats",
+  schoolManagementAuth,
+  getUsersStatsController
+);
+usersRouter.get(
+  "/schools/:schoolId/users/recently-active",
+  schoolManagementAuth,
+  getRecentlyActiveUsersController
+);
+usersRouter.get(
+  "/schools/:schoolId/users/never-logged-in",
+  schoolManagementAuth,
+  getNeverLoggedInUsersController
+);
+usersRouter.get(
+  "/schools/:schoolId/users/export",
+  superAdminAuth,
+  exportUsersController
+);
+usersRouter.get(
+  "/schools/:schoolId/users/search",
+  schoolManagementAuth,
+  searchUsersController
+);
+usersRouter.get(
+  "/schools/:schoolId/users/by-role/:role/count",
+  schoolManagementAuth,
+  countUsersByRoleController
+);
+usersRouter.get(
+  "/schools/:schoolId/users/by-role/:role",
+  schoolManagementAuth,
+  listUsersByRoleController
+);
+usersRouter.get(
+  "/schools/:schoolId/users",
+  schoolManagementAuth,
+  listUsersForSchoolController
+);
 
-userRouter.get('/role/:role/count', adminOrTeacherAuth, userController.getUsersCountByRoleController);
+// ================================================================
+// SINGLE USER — read
+// ================================================================
+usersRouter.get(
+  "/users/:userId",
+  schoolManagementAuth,
+  getUserByIdController
+);
 
-userRouter.get('/:id', anyAuthenticatedUser, userController.getUserByIdController);
-userRouter.put('/:id', adminAuth, userController.updateUserController);
-userRouter.delete('/:id', adminAuth, userController.deleteUserController);
-userRouter.patch('/:id/status', adminAuth, userController.updateUserStatusController);
-userRouter.get('/:id/student-profile', anyAuthenticatedUser, userController.getStudentByUserIdController);
+// ================================================================
+// SINGLE USER — update profile
+// ================================================================
+usersRouter.patch(
+  "/users/:userId",
+  schoolManagementAuth,
+  updateUserController
+);
 
-export default userRouter;
+// ================================================================
+// SINGLE USER — role management
+// ================================================================
+usersRouter.patch(
+  "/users/:userId/role",
+  schoolManagementAuth,
+  updateUserRoleController
+);
+usersRouter.put(
+  "/users/:userId/roles",
+  schoolManagementAuth,
+  updateUserRolesController
+);
+usersRouter.post(
+  "/users/:userId/roles/add",
+  schoolManagementAuth,
+  addUserRoleController
+);
+usersRouter.post(
+  "/users/:userId/roles/remove",
+  schoolManagementAuth,
+  removeUserRoleController
+);
+
+// ================================================================
+// BULK ACTIONS — static paths, before any /:userId POST route
+// ================================================================
+usersRouter.post(
+  "/users/bulk-deactivate",
+  schoolManagementAuth,
+  bulkDeactivateUsersController
+);
+usersRouter.post(
+  "/users/bulk-activate",
+  schoolManagementAuth,
+  bulkActivateUsersController
+);
+
+// ================================================================
+// SINGLE USER — status
+// ================================================================
+usersRouter.post(
+  "/users/:userId/activate",
+  schoolManagementAuth,
+  activateUserController
+);
+usersRouter.post(
+  "/users/:userId/deactivate",
+  schoolManagementAuth,
+  deactivateUserController
+);
+
+// ================================================================
+// SINGLE USER — password
+// ================================================================
+usersRouter.post(
+  "/users/:userId/reset-password",
+  schoolManagementAuth,
+  resetUserPasswordController
+);
+usersRouter.post(
+  "/users/:userId/force-password-change",
+  schoolManagementAuth,
+  forcePasswordChangeController
+);
+usersRouter.post(
+  "/users/:userId/clear-must-change-password",
+  schoolManagementAuth,
+  clearMustChangePasswordController
+);
+
+// ================================================================
+// SINGLE USER — sessions
+// ================================================================
+usersRouter.get(
+  "/users/:userId/sessions",
+  schoolManagementAuth,
+  listUserSessionsController
+);
+usersRouter.post(
+  "/users/:userId/sessions/revoke-all",
+  schoolManagementAuth,
+  revokeAllUserSessionsController
+);
+usersRouter.delete(
+  "/sessions/:sessionId",
+  schoolManagementAuth,
+  revokeUserSessionController
+);
+
+// ================================================================
+// SINGLE USER — delete / restore
+// ================================================================
+usersRouter.delete(
+  "/users/:userId",
+  schoolManagementAuth,
+  softDeleteUserController
+);
+usersRouter.post(
+  "/users/:userId/restore",
+  schoolManagementAuth,
+  restoreUserController
+);
+
+export default usersRouter;

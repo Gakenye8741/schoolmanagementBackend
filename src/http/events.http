@@ -1,0 +1,355 @@
+@baseUrl = http://localhost:5000/api
+@evUrl = {{baseUrl}}/events
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+@studentId = 7b004352-5dc1-438a-933b-21be82c43ab8
+@teacherId = 5acbe2d6-4e97-4f4c-889d-67fb4d7107d2
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+
+### Login first
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+@token = {{login.response.body.$.data.tokens.accessToken}}
+
+# ================================================================
+# 1. SCHOOL EVENTS
+# ================================================================
+
+### 1.1 Create an event
+# @name createEvent
+POST {{evUrl}}/schools/{{schoolId}}/events
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Annual Prize Giving Day",
+  "description": "Award ceremony for top performers, followed by a school-wide celebration.",
+  "category": "Academic",
+  "location": "Main Hall",
+  "startDate": "2026-12-15T09:00:00.000Z",
+  "endDate": "2026-12-15T16:00:00.000Z"
+}
+
+### 1.2 Bulk create (full term calendar)
+POST {{evUrl}}/schools/{{schoolId}}/events/bulk
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "events": [
+    {
+      "title": "Sports Day",
+      "category": "Sports",
+      "location": "Main Field",
+      "startDate": "2026-11-20T08:00:00.000Z",
+      "endDate": "2026-11-20T17:00:00.000Z"
+    },
+    {
+      "title": "Parents' Meeting - Term 3",
+      "category": "Meeting",
+      "location": "Main Hall",
+      "startDate": "2026-11-25T14:00:00.000Z",
+      "endDate": "2026-11-25T16:00:00.000Z"
+    },
+    {
+      "title": "Cultural Day",
+      "category": "Cultural",
+      "location": "Quadrangle",
+      "startDate": "2026-12-05T09:00:00.000Z",
+      "endDate": "2026-12-05T15:00:00.000Z"
+    }
+  ]
+}
+
+### 1.3 Get by ID
+GET {{evUrl}}/events/{{createEvent.response.body.$.event.id}}
+Authorization: Bearer {{token}}
+
+### 1.4 List events for school
+GET {{evUrl}}/schools/{{schoolId}}/events?page=1&limit=20
+Authorization: Bearer {{token}}
+
+### 1.5 List upcoming only
+GET {{evUrl}}/schools/{{schoolId}}/events?upcomingOnly=true
+Authorization: Bearer {{token}}
+
+### 1.6 List by category
+GET {{evUrl}}/schools/{{schoolId}}/events?category=Sports
+Authorization: Bearer {{token}}
+
+### 1.7 Upcoming within 30 days (default)
+GET {{evUrl}}/schools/{{schoolId}}/events/upcoming
+Authorization: Bearer {{token}}
+
+### 1.8 Upcoming within 7 days
+GET {{evUrl}}/schools/{{schoolId}}/events/upcoming?withinDays=7&limit=5
+Authorization: Bearer {{token}}
+
+### 1.9 Today's events
+GET {{evUrl}}/schools/{{schoolId}}/events/today
+Authorization: Bearer {{token}}
+
+### 1.10 Events in date range
+GET {{evUrl}}/schools/{{schoolId}}/events/range?from=2026-11-01T00:00:00Z&to=2026-12-31T23:59:59Z
+Authorization: Bearer {{token}}
+
+### 1.11 Filter by category (dedicated endpoint)
+GET {{evUrl}}/schools/{{schoolId}}/events/by-category?category=Cultural
+Authorization: Bearer {{token}}
+
+### 1.12 Calendar view (grouped by month)
+GET {{evUrl}}/schools/{{schoolId}}/events/calendar
+Authorization: Bearer {{token}}
+
+### 1.13 Calendar for a date range
+GET {{evUrl}}/schools/{{schoolId}}/events/calendar?from=2026-10-01T00:00:00Z&to=2027-01-01T00:00:00Z
+Authorization: Bearer {{token}}
+
+### 1.14 Update an event
+PATCH {{evUrl}}/events/{{createEvent.response.body.$.event.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "title": "Annual Prize Giving Day (Updated)",
+  "location": "Main Hall + Overflow Tent",
+  "endDate": "2026-12-15T17:30:00.000Z"
+}
+
+### 1.15 Stats
+GET {{evUrl}}/schools/{{schoolId}}/events/stats
+Authorization: Bearer {{token}}
+
+### 1.16 Delete an event
+DELETE {{evUrl}}/events/{{createEvent.response.body.$.event.id}}
+Authorization: Bearer {{token}}
+
+# ================================================================
+# 2. CO-CURRICULAR ACTIVITIES
+# ================================================================
+
+### 2.1 Create an activity (with patron)
+# @name createActivity
+POST {{evUrl}}/schools/{{schoolId}}/activities
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Football Club",
+  "category": "Sports",
+  "patronTeacherId": "{{teacherId}}"
+}
+
+### 2.2 Create without patron
+# @name createActivity2
+POST {{evUrl}}/schools/{{schoolId}}/activities
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Debate Society",
+  "category": "Academic"
+}
+
+### 2.3 Get activity by ID
+GET {{evUrl}}/activities/{{createActivity.response.body.$.activity.id}}
+Authorization: Bearer {{token}}
+
+### 2.4 List activities for school
+GET {{evUrl}}/schools/{{schoolId}}/activities
+Authorization: Bearer {{token}}
+
+### 2.5 List activities by category
+GET {{evUrl}}/schools/{{schoolId}}/activities?category=Sports
+Authorization: Bearer {{token}}
+
+### 2.6 List distinct categories (for UI filters)
+GET {{evUrl}}/schools/{{schoolId}}/activities/categories
+Authorization: Bearer {{token}}
+
+### 2.7 Activities under one patron
+GET {{evUrl}}/activities/patrons/{{teacherId}}
+Authorization: Bearer {{token}}
+
+### 2.8 Assign a patron
+PATCH {{evUrl}}/activities/{{createActivity2.response.body.$.activity.id}}/patron
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "patronTeacherId": "{{teacherId}}"
+}
+
+### 2.9 Unassign patron (pass null)
+PATCH {{evUrl}}/activities/{{createActivity2.response.body.$.activity.id}}/patron
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "patronTeacherId": null
+}
+
+### 2.10 Update activity
+PATCH {{evUrl}}/activities/{{createActivity2.response.body.$.activity.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Debate & Public Speaking Society",
+  "category": "Clubs"
+}
+
+### 2.11 Activity stats
+GET {{evUrl}}/activities/{{createActivity.response.body.$.activity.id}}/stats
+Authorization: Bearer {{token}}
+
+# ================================================================
+# 3. STUDENT ACTIVITY MEMBERSHIPS
+# ================================================================
+
+### 3.1 Add one student
+# @name addOne
+POST {{evUrl}}/activities/members
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "studentId": "{{studentId}}",
+  "activityId": "{{createActivity.response.body.$.activity.id}}",
+  "termId": "{{termId}}",
+  "performanceRole": "Striker"
+}
+
+### 3.2 Bulk add students
+# @name addBulk
+POST {{evUrl}}/activities/{{createActivity.response.body.$.activity.id}}/members/bulk
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "activityId": "{{createActivity.response.body.$.activity.id}}",
+  "termId": "{{termId}}",
+  "studentIds": ["{{studentId}}"],
+  "performanceRole": "Reserve"
+}
+
+### 3.3 Get membership by ID
+GET {{evUrl}}/memberships/{{addOne.response.body.$.membership.id}}
+Authorization: Bearer {{token}}
+
+### 3.4 List members of an activity
+GET {{evUrl}}/activities/{{createActivity.response.body.$.activity.id}}/members
+Authorization: Bearer {{token}}
+
+### 3.5 List members for a specific term
+GET {{evUrl}}/activities/{{createActivity.response.body.$.activity.id}}/members?termId={{termId}}
+Authorization: Bearer {{token}}
+
+### 3.6 List all memberships for a term (school-wide)
+GET {{evUrl}}/schools/{{schoolId}}/terms/{{termId}}/memberships
+Authorization: Bearer {{token}}
+
+### 3.7 List a student's activities
+GET {{evUrl}}/students/{{studentId}}/activities
+Authorization: Bearer {{token}}
+
+### 3.8 List a student's activities for one term
+GET {{evUrl}}/students/{{studentId}}/activities?termId={{termId}}
+Authorization: Bearer {{token}}
+
+### 3.9 Student activity summary
+GET {{evUrl}}/students/{{studentId}}/activities/summary
+Authorization: Bearer {{token}}
+
+### 3.10 Update performance role
+PATCH {{evUrl}}/memberships/{{addOne.response.body.$.membership.id}}/role
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "performanceRole": "Captain"
+}
+
+### 3.11 Students NOT yet in this activity (for picker)
+GET {{evUrl}}/activities/{{createActivity.response.body.$.activity.id}}/members/not-in/schools/{{schoolId}}/terms/{{termId}}
+Authorization: Bearer {{token}}
+
+### 3.12 Remove a student
+DELETE {{evUrl}}/memberships/{{addOne.response.body.$.membership.id}}
+Authorization: Bearer {{token}}
+
+# ================================================================
+# 4. NEGATIVE TESTS
+# ================================================================
+
+### 4.1 Create event with endDate < startDate → expect 400
+POST {{evUrl}}/schools/{{schoolId}}/events
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Bad Event",
+  "category": "General",
+  "startDate": "2026-12-20T10:00:00Z",
+  "endDate": "2026-12-19T10:00:00Z"
+}
+
+### 4.2 Create event with invalid category → expect 400
+POST {{evUrl}}/schools/{{schoolId}}/events
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "title": "Wrong Category Event",
+  "category": "MadeUpCategory",
+  "startDate": "2026-12-20T10:00:00Z",
+  "endDate": "2026-12-20T12:00:00Z"
+}
+
+### 4.3 Add student with mismatched school → expect 400
+POST {{evUrl}}/activities/members
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "00000000-0000-0000-0000-000000000099",
+  "studentId": "{{studentId}}",
+  "activityId": "{{createActivity.response.body.$.activity.id}}",
+  "termId": "{{termId}}"
+}
+
+### 4.4 Bulk add with mostly invalid student IDs → 1 valid, rest skipped
+POST {{evUrl}}/activities/{{createActivity.response.body.$.activity.id}}/members/bulk
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "activityId": "{{createActivity.response.body.$.activity.id}}",
+  "termId": "{{termId}}",
+  "studentIds": [
+    "{{studentId}}",
+    "00000000-0000-0000-0000-000000000001",
+    "00000000-0000-0000-0000-000000000002"
+  ]
+}
+
+### 4.5 Delete non-existent event → expect 404
+DELETE {{evUrl}}/events/00000000-0000-0000-0000-000000000099
+Authorization: Bearer {{token}}

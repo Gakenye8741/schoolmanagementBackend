@@ -1,85 +1,570 @@
-@baseUrl = http://localhost:5000/api/users
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImIzMGY2NjhhLTgyYTUtNGJlMi04ZTE2LTEyZTAxMjIzNzk4MiIsImVtYWlsIjoiYWRtaW5AcGxhdGZvcm0uY29tIiwicm9sZSI6InN1cGVyX2FkbWluIiwic2Nob29sSWQiOm51bGwsImlhdCI6MTc4OTA1MDgwNywiZXhwIjoxNzg5NjU1NjA3fQ.eJeoMOiHTlulIT9E7nb3_RtER6m_lVV10HX4ULLryY4
-@schoolId = b67a3e68-8de1-4938-a722-8b7e8f5c3c6a
-@userId = b25f9bee-92c5-45fe-a7b7-a7951bbf1ed7@classId = class-uuid-here
+@baseUrl = http://localhost:5000/api
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@schoolBId = 00000000-0000-0000-0000-000000000002
 
-### 1. Get Users (Super Admin/Admin standard scoped query)
-GET {{baseUrl}}?page=1&limit=10&role=student&search=alex
-Cookie: token={{token}}
+# ================================================================
+# 0. LOGIN
+# ================================================================
 
-### 1b. Get Users Filtered by School (Optional for Super Admin to target specific school)
-GET {{baseUrl}}?schoolId={{schoolId}}&page=1&limit=10
-Cookie: token={{token}}
-
-### 1c. Get All Users System-Wide (Super Admin Dedicated Route - No school filter required)
-GET {{baseUrl}}/super-admin/all?page=1&limit=10
-Cookie: token={{token}}
-
-### 3. Get User By Email
-GET {{baseUrl}}/email?email=alex@Ross.com
-Cookie: token={{token}}
-
-### 3b. Get User By Email with explicit school context (if needed)
-GET {{baseUrl}}/email?email=annet@Ross.com&schoolId={{schoolId}}
-Cookie: token={{token}}
-
-### 4. Get Teachers By School
-GET {{baseUrl}}/teachers?schoolId={{schoolId}}
-Cookie: token={{token}}
-
-### 5. Get All Students By School ID
-GET {{baseUrl}}/students?schoolId={{schoolId}}
-Cookie: token={{token}}
-
-### 6. Get Students By Class ID (Uncomment route in router if using)
-# GET {{baseUrl}}/students/class/{{classId}}
-# Cookie: token={{token}}
-
-### 7. Check Admission Number Availability
-GET {{baseUrl}}/check-admission?admissionNumber=ADM-2026-001&schoolId={{schoolId}}
-Cookie: token={{token}}
-
-### 8. Bulk Update User Status
-PATCH {{baseUrl}}/status/bulk?schoolId={{schoolId}}
-Cookie: token={{token}}
+### 0.1 Login as SUPER ADMIN
+# @name loginSuper
+POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-  "userIds": ["uuid-1", "uuid-2"],
-  "isActive": false
+  "identifier": "super@platform.test",
+  "password": "SuperPass123"
 }
+@superToken = {{loginSuper.response.body.$.data.tokens.accessToken}}
 
-### 9. Get Users Count By Role
-GET {{baseUrl}}/role/student/count?schoolId={{schoolId}}
-Cookie: token={{token}}
-
-### 10. Get User By ID
-GET {{baseUrl}}/{{userId}}
-Cookie: token={{token}}
-
-### 11. Update User Details
-PUT {{baseUrl}}/{{userId}}
-Cookie: token={{token}}
+### 0.2 Login as SCHOOL ADMIN (school A)
+# @name loginAdmin
+###
+POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-  "name": "Jane Updated Doe",
-  "phone": "+254798765432"
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
 }
 
-### 12. Delete User
-DELETE {{baseUrl}}/{{userId}}
-Cookie: token={{token}}
 
-### 13. Update User Status (Activate/Deactivate)
-PATCH {{baseUrl}}/{{userId}}/status
-Cookie: token={{token}}
+@token = {{loginAdmin.response.body.$.data.tokens.accessToken}}
+
+### 0.3 Login as a TEACHER (school A) — used for negative tests
+# @name loginTeacher
+POST {{baseUrl}}/auth/login
 Content-Type: application/json
 
 {
-  "isActive":false
+  "identifier": "jane.wanjiku@school.test",
+  "password": "TempPass123!",
+  "schoolId": "{{schoolId}}"
+}
+@teacherToken = {{loginTeacher.response.body.$.data.tokens.accessToken}}
+
+
+# ================================================================
+# 1. SUPER ADMIN — system-wide user view
+# ================================================================
+
+### 1.1 List ALL users across every school (paginated)
+GET {{baseUrl}}/admin/users?page=1&limit=20
+Authorization: Bearer {{superToken}}
+
+### 1.2 List users in ONE school only
+GET {{baseUrl}}/admin/users?schoolId={{schoolId}}&page=1&limit=20
+Authorization: Bearer {{superToken}}
+
+### 1.3 Every PARENT in the system
+GET {{baseUrl}}/admin/users?role=parent&limit=50
+Authorization: Bearer {{superToken}}
+
+### 1.4 Every ACTIVE teacher across all schools
+GET {{baseUrl}}/admin/users?role=teacher&isActive=true&limit=50
+Authorization: Bearer {{superToken}}
+
+### 1.5 Search by name anywhere
+GET {{baseUrl}}/admin/users?search=wanjiku
+Authorization: Bearer {{superToken}}
+
+### 1.6 Search inside one school
+GET {{baseUrl}}/admin/users?schoolId={{schoolId}}&search=wanjiku&limit=10
+Authorization: Bearer {{superToken}}
+
+### 1.7 Every student in the system (super admin view)
+GET {{baseUrl}}/admin/users?role=student&limit=50
+Authorization: Bearer {{superToken}}
+
+
+# ================================================================
+# 2. SCHOOL ADMIN — create users
+# ================================================================
+
+### 2.1 Create ONE teacher
+# @name createTeacher
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Mary Achieng",
+  "email": "mary.achieng@school.test",
+  "phone": "+254711111111",
+  "tscNumber": "TSC-99999",
+  "role": "teacher",
+  "password": "TempPass123!"
 }
 
-### 14. Get Student Profile by User ID
-GET {{baseUrl}}/{{userId}}/student-profile
-Cookie: token={{token}}
+### 2.2 Create a teacher who is ALSO the librarian (multi-role)
+# @name createDualRole
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Kevin Mutua",
+  "email": "kevin.mutua@school.test",
+  "role": "teacher",
+  "extraRoles": ["librarian"],
+  "password": "TempPass123!"
+}
+
+### 2.3 Create a bursar (no TSC needed)
+# @name createBursar
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Grace Wambui",
+  "email": "grace.wambui@school.test",
+  "role": "bursar",
+  "password": "TempPass123!"
+}
+
+### 2.4 Bulk-create 3 staff at once (returns temp passwords)
+# @name bulkCreate
+POST {{baseUrl}}/schools/{{schoolId}}/users/bulk
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "users": [
+    { "name": "Paul Kariuki",  "email": "paul.kariuki@school.test",  "role": "teacher" },
+    { "name": "Susan Nyambura","email": "susan.nyambura@school.test","role": "teacher" },
+    { "name": "James Otieno",  "email": "james.otieno@school.test",  "role": "registrar" }
+  ]
+}
+
+
+# ================================================================
+# 3. READ — school-scoped
+# ================================================================
+
+### 3.1 List every user in school A (staff + students + parents)
+GET {{baseUrl}}/schools/{{schoolId}}/users?page=1&limit=20
+Authorization: Bearer {{token}}
+
+### 3.2 Only STAFF (exclude students)
+GET {{baseUrl}}/schools/{{schoolId}}/users?includeStudents=false
+Authorization: Bearer {{token}}
+
+### 3.3 Only STUDENTS
+GET {{baseUrl}}/schools/{{schoolId}}/users?role=student&limit=50
+Authorization: Bearer {{token}}
+
+### 3.4 Only PARENTS
+GET {{baseUrl}}/schools/{{schoolId}}/users?role=parent&limit=50
+Authorization: Bearer {{token}}
+
+### 3.5 Only ACTIVE users
+GET {{baseUrl}}/schools/{{schoolId}}/users?isActive=true
+Authorization: Bearer {{token}}
+
+### 3.6 Only INACTIVE users
+GET {{baseUrl}}/schools/{{schoolId}}/users?isActive=false
+Authorization: Bearer {{token}}
+
+### 3.7 Only TEACHERS (shortcut endpoint)
+GET {{baseUrl}}/schools/{{schoolId}}/users/by-role/teacher
+Authorization: Bearer {{token}}
+
+### 3.8 Only STUDENTS (shortcut endpoint)
+GET {{baseUrl}}/schools/{{schoolId}}/users/by-role/student
+Authorization: Bearer {{token}}
+
+### 3.9 Only PARENTS (shortcut endpoint)
+GET {{baseUrl}}/schools/{{schoolId}}/users/by-role/parent
+Authorization: Bearer {{token}}
+
+### 3.10 Search by name (across all roles)
+GET {{baseUrl}}/schools/{{schoolId}}/users/search?q=mary
+Authorization: Bearer {{token}}
+
+### 3.11 Search by TSC number
+GET {{baseUrl}}/schools/{{schoolId}}/users/search?q=TSC-99999
+Authorization: Bearer {{token}}
+
+### 3.12 Search only teachers
+GET {{baseUrl}}/schools/{{schoolId}}/users/search?q=wanjiku&role=teacher
+Authorization: Bearer {{token}}
+
+### 3.13 Get one user by ID
+GET {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}
+Authorization: Bearer {{token}}
+
+
+# ================================================================
+# 4. UPDATE — profile
+# ================================================================
+
+### 4.1 Update name + phone
+PATCH {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Mary A. Achieng",
+  "phone": "+254722222222"
+}
+
+### 4.2 Update TSC number
+PATCH {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "tscNumber": "TSC-88888"
+}
+
+### 4.3 Update avatar URL
+PATCH {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "avatarUrl": "https://cdn.school.test/avatars/mary.jpg"
+}
+
+
+# ================================================================
+# 5. ROLES — primary + multi-role
+# ================================================================
+
+### 5.1 Change primary role (teacher → deputy_principal)
+PATCH {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/role
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "role": "deputy_principal"
+}
+
+### 5.2 Replace ALL roles (must include primary)
+PUT {{baseUrl}}/users/{{createDualRole.response.body.$.user.id}}/roles
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "roles": ["teacher", "librarian", "registrar"],
+  "primaryRole": "teacher"
+}
+
+### 5.3 Add one more role
+POST {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/roles/add
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "role": "registrar"
+}
+
+### 5.4 Remove that role
+POST {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/roles/remove
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "role": "registrar"
+}
+
+
+# ================================================================
+# 6. STATUS — activate / deactivate
+# ================================================================
+
+### 6.1 Deactivate one user
+POST {{baseUrl}}/users/{{createBursar.response.body.$.user.id}}/deactivate
+Authorization: Bearer {{token}}
+
+### 6.2 Reactivate the same user
+POST {{baseUrl}}/users/{{createBursar.response.body.$.user.id}}/activate
+Authorization: Bearer {{token}}
+
+### 6.3 Bulk deactivate (two users at once)
+POST {{baseUrl}}/users/bulk-deactivate
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "userIds": [
+    "{{createDualRole.response.body.$.user.id}}",
+    "{{createBursar.response.body.$.user.id}}"
+  ]
+}
+
+### 6.4 Bulk activate them again
+POST {{baseUrl}}/users/bulk-activate
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "userIds": [
+    "{{createDualRole.response.body.$.user.id}}",
+    "{{createBursar.response.body.$.user.id}}"
+  ]
+}
+
+
+# ================================================================
+# 7. PASSWORD
+# ================================================================
+
+### 7.1 Admin resets password (user must change on next login)
+POST {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/reset-password
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "newPassword": "NewPass456!",
+  "mustChangePassword": true,
+  "revokeSessions": true
+}
+
+### 7.2 Force change without resetting
+POST {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/force-password-change
+Authorization: Bearer {{token}}
+
+### 7.3 Clear the must-change flag
+POST {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/clear-must-change-password
+Authorization: Bearer {{token}}
+
+
+# ================================================================
+# 8. SESSIONS
+# ================================================================
+
+### 8.1 List a user's active sessions
+GET {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/sessions
+Authorization: Bearer {{token}}
+
+### 8.2 List ALL sessions (including revoked)
+GET {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/sessions?activeOnly=false
+Authorization: Bearer {{token}}
+
+### 8.3 Revoke ALL sessions for a user (force logout everywhere)
+POST {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/sessions/revoke-all
+Authorization: Bearer {{token}}
+
+
+# ================================================================
+# 9. STATS
+# ================================================================
+
+### 9.1 Full stats (total / active / by role / never logged in / must change)
+GET {{baseUrl}}/schools/{{schoolId}}/users/stats
+Authorization: Bearer {{token}}
+
+### 9.2 Count teachers only
+GET {{baseUrl}}/schools/{{schoolId}}/users/by-role/teacher/count
+Authorization: Bearer {{token}}
+
+### 9.3 Count students
+GET {{baseUrl}}/schools/{{schoolId}}/users/by-role/student/count
+Authorization: Bearer {{token}}
+
+### 9.4 Users active in the last 7 days
+GET {{baseUrl}}/schools/{{schoolId}}/users/recently-active?withinDays=7
+Authorization: Bearer {{token}}
+
+### 9.5 Never-logged-in users (chase them to activate their accounts)
+GET {{baseUrl}}/schools/{{schoolId}}/users/never-logged-in
+Authorization: Bearer {{token}}
+
+### 9.6 Export users (JSON dump — super admin only)
+GET {{baseUrl}}/schools/{{schoolId}}/users/export
+Authorization: Bearer {{superToken}}
+
+
+# ================================================================
+# 10. DELETE / RESTORE
+# ================================================================
+
+### 10.1 Soft-delete a user
+DELETE {{baseUrl}}/users/{{createBursar.response.body.$.user.id}}
+Authorization: Bearer {{token}}
+
+### 10.2 Confirm they're gone from the list
+GET {{baseUrl}}/schools/{{schoolId}}/users?includeStudents=false
+Authorization: Bearer {{token}}
+
+### 10.3 Restore the deleted user
+POST {{baseUrl}}/users/{{createBursar.response.body.$.user.id}}/restore
+Authorization: Bearer {{token}}
+
+
+# ================================================================
+# 11. NEGATIVE TESTS — every guard
+# ================================================================
+
+### 11.1 Create student via users endpoint → 400
+#      (students must go through POST /students)
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Should Fail",
+  "email": "fail@school.test",
+  "role": "student",
+  "password": "TempPass123!"
+}
+
+### 11.2 Create super_admin via users endpoint → 400
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Should Fail",
+  "email": "superfail@school.test",
+  "role": "super_admin",
+  "password": "TempPass123!"
+}
+
+### 11.3 Create user with duplicate email → 409/400
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Mary Achieng Duplicate",
+  "email": "mary.achieng@school.test",
+  "role": "teacher",
+  "password": "TempPass123!"
+}
+
+### 11.4 Create with password < 8 chars → 400
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Short Pass",
+  "email": "shortpass@school.test",
+  "role": "teacher",
+  "password": "short"
+}
+
+### 11.5 Create with invalid email → 400
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Bad Email",
+  "email": "not-an-email",
+  "role": "teacher",
+  "password": "TempPass123!"
+}
+
+### 11.6 Create where extraRoles includes primary role → 400
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Dupe Role",
+  "email": "duperole@school.test",
+  "role": "teacher",
+  "extraRoles": ["teacher", "librarian"],
+  "password": "TempPass123!"
+}
+
+### 11.7 Deactivate YOURSELF → 400
+POST {{baseUrl}}/users/{{loginAdmin.response.body.$.data.user.id}}/deactivate
+Authorization: Bearer {{token}}
+
+### 11.8 Delete YOURSELF → 400
+DELETE {{baseUrl}}/users/{{loginAdmin.response.body.$.data.user.id}}
+Authorization: Bearer {{token}}
+
+### 11.9 School admin tries to view a user in ANOTHER school → 403
+GET {{baseUrl}}/users/00000000-0000-0000-0000-000000000001
+Authorization: Bearer {{token}}
+
+### 11.10 School admin tries to list ANOTHER school's users → 403
+GET {{baseUrl}}/schools/{{schoolBId}}/users
+Authorization: Bearer {{token}}
+
+### 11.11 School admin tries to hit /admin/users → 403
+GET {{baseUrl}}/admin/users
+Authorization: Bearer {{token}}
+
+### 11.12 Teacher tries to create a user → 403
+POST {{baseUrl}}/schools/{{schoolId}}/users
+Content-Type: application/json
+Authorization: Bearer {{teacherToken}}
+
+{
+  "schoolId": "{{schoolId}}",
+  "name": "Teacher Trying",
+  "email": "teachertrying@school.test",
+  "role": "teacher",
+  "password": "TempPass123!"
+}
+
+### 11.13 Remove your OWN primary role → 400
+POST {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/roles/remove
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "role": "deputy_principal"
+}
+
+### 11.14 Replace roles WITHOUT including primary → 400
+PUT {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/roles
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "roles": ["librarian", "registrar"]
+}
+
+### 11.15 Invalid role name → 400
+PATCH {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/role
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "role": "wizard"
+}
+
+### 11.16 Invalid UUID for userId → 400
+GET {{baseUrl}}/users/not-a-uuid
+Authorization: Bearer {{token}}
+
+### 11.17 Bulk-deactivate 101 users → 400 (max 100)
+POST {{baseUrl}}/users/bulk-deactivate
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "userIds": [
+    "00000000-0000-0000-0000-000000000001",
+    "00000000-0000-0000-0000-000000000002",
+    "… (imagine 99 more)"
+  ]
+}
+
+### 11.18 Reset password with < 8 chars → 400
+POST {{baseUrl}}/users/{{createTeacher.response.body.$.user.id}}/reset-password
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "newPassword": "abc"
+}

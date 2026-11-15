@@ -1,0 +1,369 @@
+@baseUrl = http://localhost:5000/api
+@homeworkUrl = {{baseUrl}}/homework
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@classId = 1deeec22-8ddc-4f51-9458-5803a4e6d031
+@subjectId = 59027619-15f8-411b-9646-cbbd2fac02bb
+@teacherId = 5acbe2d6-4e97-4f4c-889d-67fb4d7107d2
+@studentId = 7b004352-5dc1-438a-933b-21be82c43ab8
+@studentId2 = 00000000-0000-0000-0000-000000000002
+
+@assignmentId = a9c0ede6-00aa-4755-84f4-dd9e9dc7a0f3
+
+### 0.1 Login as teacher/admin
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "principal@school.test",
+  "password": "PrincipalPass123",
+  "schoolId": "{{schoolId}}"
+}
+
+# ================================================================
+# 1. CREATE ASSIGNMENTS
+# ================================================================
+
+### 1.1 Create a Math assignment (auto-notifies class)
+# @name createMathAssignment
+POST {{homeworkUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "teacherId": "{{teacherId}}",
+  "title": "Quadratic Equations Practice",
+  "description": "Solve all 20 problems on page 45. Show your working for full marks.",
+  "maxScore": "50.00",
+  "dueDate": "2026-12-15T17:00:00Z",
+  "notify": true
+}
+
+### Captured
+@assignmentId = {{createMathAssignment.response.body.$.assignment.id}}
+
+### 1.2 Create a second assignment (English)
+# @name createEnglishAssignment
+POST {{homeworkUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "teacherId": "{{teacherId}}",
+  "title": "Essay: My Favourite Season",
+  "description": "Write a 300-word essay describing your favourite season. Use at least 5 descriptive adjectives.",
+  "maxScore": "30.00",
+  "dueDate": "2026-12-20T17:00:00Z",
+  "notify": false
+}
+
+### 1.3 Get assignment by ID
+GET {{homeworkUrl}}/{{assignmentId}}
+
+### 1.4 List assignments for the class
+GET {{homeworkUrl}}/class/{{classId}}
+
+### 1.5 List assignments for the class — filtered by date
+GET {{homeworkUrl}}/class/{{classId}}?fromDate=2026-12-01T00:00:00Z&toDate=2026-12-31T23:59:59Z
+
+### 1.6 List upcoming assignments for the class
+GET {{homeworkUrl}}/class/{{classId}}/upcoming
+
+### 1.7 Count assignments for the class
+GET {{homeworkUrl}}/class/{{classId}}/count
+
+### 1.8 List assignments for the subject
+GET {{homeworkUrl}}/subject/{{subjectId}}
+
+### 1.9 List assignments for the teacher
+GET {{homeworkUrl}}/teacher/{{teacherId}}
+
+### 1.10 List all assignments in the school
+GET {{homeworkUrl}}/school/{{schoolId}}
+
+### 1.11 Update assignment (extend due date, change maxScore)
+PUT {{homeworkUrl}}/{{assignmentId}}
+Content-Type: application/json
+
+{
+  "title": "Quadratic Equations Practice (Extended)",
+  "maxScore": "60.00",
+  "dueDate": "2026-12-22T17:00:00Z"
+}
+
+# ================================================================
+# 2. STUDENTS SUBMIT
+# ================================================================
+
+### 2.1 Student 1 submits text
+# @name submitStudent1
+POST {{homeworkUrl}}/submissions
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "assignmentId": "{{assignmentId}}",
+  "studentId": "{{studentId}}",
+  "submissionText": "I solved all 20 problems. My working is attached in the scanned notebook pages."
+}
+
+### Captured
+@submission1Id = {{submitStudent1.response.body.$.submission.id}}
+
+### 2.2 Student 2 submits with attachment
+# @name submitStudent2
+POST {{homeworkUrl}}/submissions
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "assignmentId": "{{assignmentId}}",
+  "studentId": "{{studentId}}",
+  "attachmentUrl": "https://example.com/uploads/student2-math.pdf"
+}
+
+### 2.3 Student 1 updates their submission (upsert — should update, not duplicate)
+POST {{homeworkUrl}}/submissions
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "assignmentId": "{{assignmentId}}",
+  "studentId": "{{studentId}}",
+  "submissionText": "I solved all 20 problems. Updated: added graph sketch for Q7."
+}
+
+### 2.4 Get submission by ID
+GET {{homeworkUrl}}/submissions/{{submission1Id}}
+
+### 2.5 Get student 1's submission for this assignment
+GET {{homeworkUrl}}/assignments/{{assignmentId}}/student/{{studentId}}/submission
+
+### 2.6 List submissions for the assignment (teacher's view)
+GET {{homeworkUrl}}/{{assignmentId}}/submissions
+
+### 2.7 List only Submitted/Late (needs grading)
+GET {{homeworkUrl}}/{{assignmentId}}/submissions?status=Submitted
+
+### 2.8 List all submissions by student 1
+GET {{homeworkUrl}}/student/{{studentId}}/submissions
+
+### 2.9 List pending submissions (students who haven't submitted)
+GET {{homeworkUrl}}/{{assignmentId}}/pending
+
+# ================================================================
+# 3. TEACHER GRADES
+# ================================================================
+
+### 3.1 Grade student 1's submission
+POST {{homeworkUrl}}/submissions/{{submission1Id}}/grade
+Content-Type: application/json
+
+{
+  "gradeScore": "47.00",
+  "teacherFeedback": "Excellent work — clean methods, good use of graphs. Well done!"
+}
+
+### 3.2 Grade student 2's submission
+POST {{homeworkUrl}}/submissions/{{submitStudent2.response.body.$.submission.id}}/grade
+Content-Type: application/json
+
+{
+  "gradeScore": "41.00",
+  "teacherFeedback": "Good but a few careless errors in Q12 and Q15. Review the discriminant rule."
+}
+
+### 3.3 Count ungraded for this assignment (should be 0 after the above two grades)
+GET {{homeworkUrl}}/{{assignmentId}}/ungraded-count
+
+### 3.4 Count ungraded for the teacher (across all their assignments)
+GET {{homeworkUrl}}/teacher/{{teacherId}}/ungraded-count
+
+### 3.5 Get assignment summary
+GET {{homeworkUrl}}/{{assignmentId}}/summary
+
+### 3.6 Teacher's grading queue
+GET {{homeworkUrl}}/grading-queue/{{submission1Id}}
+
+### 3.7 Ungrade student 1's submission (to test re-grading)
+POST {{homeworkUrl}}/submissions/{{submission1Id}}/ungrade
+
+### 3.8 Re-grade it
+POST {{homeworkUrl}}/submissions/{{submission1Id}}/grade
+Content-Type: application/json
+
+{
+  "gradeScore": "48.00",
+  "teacherFeedback": "Re-checked — 48. Even better than my first assessment."
+}
+
+### 3.9 Return a submission for resubmission
+POST {{homeworkUrl}}/submissions/{{submitStudent2.response.body.$.submission.id}}/return
+Content-Type: application/json
+
+{
+  "feedback": "Please redo Q12 and Q15, then resubmit."
+}
+
+### 3.10 Student 2 resubmits (upsert — updates existing row)
+POST {{homeworkUrl}}/submissions
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "assignmentId": "{{assignmentId}}",
+  "studentId": "{{studentId}}",
+  "submissionText": "Redid Q12 and Q15 — my working is now correct. Please re-grade."
+}
+
+### 3.11 Bulk grade multiple submissions
+POST {{homeworkUrl}}/submissions/bulk-grade
+Content-Type: application/json
+
+{
+  "items": [
+    { "submissionId": "{{submission1Id}}", "gradeScore": "50.00", "teacherFeedback": "Perfect score!" }
+  ]
+}
+
+# ================================================================
+# 4. STUDENT VIEWS
+# ================================================================
+
+### 4.1 Student 1's homework summary (all subjects, all assignments)
+GET {{homeworkUrl}}/student/{{studentId}}/summary
+
+### 4.2 Student 1's homework summary — filtered by date
+GET {{homeworkUrl}}/student/{{studentId}}/summary?fromDate=2026-12-01T00:00:00Z&toDate=2026-12-31T23:59:59Z
+
+# ================================================================
+# 5. REPORTS
+# ================================================================
+
+### 5.1 Class completion rate
+GET {{homeworkUrl}}/class/{{classId}}/completion-rate
+
+### 5.2 Class completion rate — filtered
+GET {{homeworkUrl}}/class/{{classId}}/completion-rate?fromDate=2026-12-01T00:00:00Z&toDate=2026-12-31T23:59:59Z
+
+### 5.3 Class ranking by completion rate
+GET {{homeworkUrl}}/class/{{classId}}/ranking
+
+### 5.4 Subject homework summary
+GET {{homeworkUrl}}/subject/{{subjectId}}/summary
+
+### 5.5 Teacher workload
+GET {{homeworkUrl}}/teacher/{{teacherId}}/workload
+
+### 5.6 School homework overview
+GET {{homeworkUrl}}/school/{{schoolId}}/overview
+
+# ================================================================
+# 6. HOUSEKEEPING
+# ================================================================
+
+### 6.1 Mark overdue submissions as Late
+### (Run this periodically; transitions any Pending submission past-due assignment → Late)
+POST {{homeworkUrl}}/school/{{schoolId}}/mark-overdue
+
+# ================================================================
+# 7. NEGATIVE TESTS
+# ================================================================
+
+### 7.1 Create assignment with past due date — expect 400
+POST {{homeworkUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "teacherId": "{{teacherId}}",
+  "title": "Past Due Test",
+  "description": "This should fail because the due date is in the past.",
+  "dueDate": "2020-01-01T17:00:00Z"
+}
+
+### 7.2 Create assignment with short title — expect 400
+POST {{homeworkUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "teacherId": "{{teacherId}}",
+  "title": "X",
+  "description": "Valid description here",
+  "dueDate": "2026-12-20T17:00:00Z"
+}
+
+### 7.3 Create assignment with invalid UUID — expect 400
+POST {{homeworkUrl}}
+Content-Type: application/json
+
+{
+  "schoolId": "not-a-uuid",
+  "classId": "{{classId}}",
+  "subjectId": "{{subjectId}}",
+  "teacherId": "{{teacherId}}",
+  "title": "Test",
+  "description": "Test",
+  "dueDate": "2026-12-20T17:00:00Z"
+}
+
+### 7.4 Submit empty homework (no text, no attachment) — expect 400
+POST {{homeworkUrl}}/submissions
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "assignmentId": "{{assignmentId}}",
+  "studentId": "{{studentId}}",
+  "submissionText": "",
+  "attachmentUrl": null
+}
+
+### 7.5 Submit for student not in the class — expect 400
+POST {{homeworkUrl}}/submissions
+Content-Type: application/json
+
+{
+  "schoolId": "{{schoolId}}",
+  "assignmentId": "{{assignmentId}}",
+  "studentId": "00000000-0000-0000-0000-000000000099",
+  "submissionText": "This student isn't in the class"
+}
+
+### 7.6 Grade with no fields — expect 400
+POST {{homeworkUrl}}/submissions/{{submission1Id}}/grade
+Content-Type: application/json
+
+{}
+
+### 7.7 Get nonexistent assignment — expect 404
+GET {{homeworkUrl}}/00000000-0000-0000-0000-000000000099
+
+### 7.8 Get submission for student who hasn't submitted — expect 404
+GET {{homeworkUrl}}/assignments/{{assignmentId}}/student/00000000-0000-0000-0000-000000000099/submission
+
+### 7.9 Bulk grade with duplicate IDs — expect 400
+POST {{homeworkUrl}}/submissions/bulk-grade
+Content-Type: application/json
+
+{
+  "items": [
+    { "submissionId": "{{submission1Id}}", "gradeScore": "40.00" },
+    { "submissionId": "{{submission1Id}}", "gradeScore": "50.00" }
+  ]
+}
+
+### 7.10 Update assignment with no fields — expect 400
+PUT {{homeworkUrl}}/{{assignmentId}}
+Content-Type: application/json
+
+{}

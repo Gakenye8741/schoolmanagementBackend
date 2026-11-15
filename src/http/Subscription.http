@@ -1,0 +1,266 @@
+@baseUrl = http://localhost:5000/api
+@subUrl = {{baseUrl}}/subscriptions
+@schoolId = 52426aab-497c-4880-8f8a-ad8a385f6e2b
+@termId = 7d976448-4163-498c-b44a-452093eb121d
+
+### Login (as super_admin for the platform endpoints)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "identifier": "super@platform.test",
+  "password": "SuperPass123"
+}
+
+@token = {{login.response.body.$.data.tokens.accessToken}}
+
+# ================================================================
+# 1. PLAN CATALOGUE (public)
+# ================================================================
+
+### 1.1 List all plans
+GET {{subUrl}}/plans
+
+### 1.2 Get one plan
+GET {{subUrl}}/plans/Basic
+
+# ================================================================
+# 2. SCHOOL VIEWS (school admin sees own subscription)
+# ================================================================
+
+### 2.1 Current subscription
+GET {{subUrl}}/schools/{{schoolId}}
+Authorization: Bearer {{token}}
+
+### 2.2 Current + payment history
+GET {{subUrl}}/schools/{{schoolId}}/with-payments
+Authorization: Bearer {{token}}
+
+### 2.3 Payment list
+GET {{subUrl}}/schools/{{schoolId}}/payments?page=1&limit=20
+Authorization: Bearer {{token}}
+
+### 2.4 SMS balance
+GET {{subUrl}}/schools/{{schoolId}}/sms-credits
+Authorization: Bearer {{token}}
+
+### 2.5 Purchase SMS credits (school self-service)
+POST {{subUrl}}/schools/{{schoolId}}/sms-credits/purchase
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "credits": 500,
+  "amount": 2500,
+  "paymentMethod": "M-Pesa",
+  "referenceCode": "SMS-PAY-001"
+}
+
+# ================================================================
+# 3. SUBSCRIBE / RENEW / UPGRADE / DOWNGRADE (super admin)
+# ================================================================
+
+### 3.1 Start a Trial
+# @name subscribeTrial
+POST {{subUrl}}/admin/schools/{{schoolId}}/subscribe
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "plan": "Trial"
+}
+
+### 3.2 Subscribe to Basic (with payment)
+# @name subscribeBasic
+POST {{subUrl}}/admin/schools/{{schoolId}}/subscribe
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "plan": "Basic",
+  "paymentMethod": "M-Pesa",
+  "amount": 5000,
+  "referenceCode": "MPESA-{{$timestamp}}"
+}
+
+### 3.3 Renew current plan
+POST {{subUrl}}/admin/schools/{{schoolId}}/renew
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "paymentMethod": "Bank",
+  "amount": 5000,
+  "referenceCode": "BANK-{{$timestamp}}"
+}
+
+### 3.4 Upgrade to Standard
+POST {{subUrl}}/admin/schools/{{schoolId}}/upgrade
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "newPlan": "Standard",
+  "paymentMethod": "Bank",
+  "amount": 15000,
+  "referenceCode": "UPGRADE-{{$timestamp}}"
+}
+
+### 3.5 Downgrade to Basic
+POST {{subUrl}}/admin/schools/{{schoolId}}/downgrade
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "newPlan": "Basic"
+}
+
+# ================================================================
+# 4. SUSPEND / REACTIVATE / EXPIRE (super admin)
+# ================================================================
+
+### 4.1 Suspend
+POST {{subUrl}}/admin/schools/{{schoolId}}/suspend
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "reason": "Payment overdue by 60 days"
+}
+
+### 4.2 Reactivate
+POST {{subUrl}}/admin/schools/{{schoolId}}/reactivate
+Authorization: Bearer {{token}}
+
+### 4.3 Expire
+POST {{subUrl}}/admin/schools/{{schoolId}}/expire
+Authorization: Bearer {{token}}
+
+### 4.4 Cancel
+POST {{subUrl}}/admin/schools/{{schoolId}}/cancel
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "reason": "School moving to another platform"
+}
+
+# ================================================================
+# 5. RECORD A PAYMENT (bookkeeping only — does NOT change plan)
+# ================================================================
+
+### 5.1 Manual bank transfer reconciliation
+POST {{subUrl}}/admin/schools/{{schoolId}}/payments
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "plan": "Basic",
+  "amount": 5000,
+  "paymentMethod": "Bank",
+  "referenceCode": "BANK-RECON-{{$timestamp}}",
+  "periodStart": "2026-11-01",
+  "periodEnd": "2026-11-30"
+}
+
+### 5.2 Get payment by ID
+GET {{subUrl}}/admin/payments/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}
+
+# ================================================================
+# 6. PLATFORM ADMIN — listing & dashboards
+# ================================================================
+
+### 6.1 List all schools with billing info
+GET {{subUrl}}/admin/schools?page=1&limit=20
+Authorization: Bearer {{token}}
+
+### 6.2 Filter by plan
+GET {{subUrl}}/admin/schools?plan=Premium&page=1&limit=20
+Authorization: Bearer {{token}}
+
+### 6.3 Filter by status
+GET {{subUrl}}/admin/schools?status=PastDue
+Authorization: Bearer {{token}}
+
+### 6.4 Revenue summary
+GET {{subUrl}}/admin/dashboard/revenue
+Authorization: Bearer {{token}}
+
+### 6.5 Revenue summary for a date range
+GET {{subUrl}}/admin/dashboard/revenue?from=2026-01-01&to=2026-12-31
+Authorization: Bearer {{token}}
+
+### 6.6 Expiring within 30 days
+GET {{subUrl}}/admin/dashboard/expiring?withinDays=30
+Authorization: Bearer {{token}}
+
+### 6.7 Expiring within 7 days (urgent)
+GET {{subUrl}}/admin/dashboard/expiring?withinDays=7
+Authorization: Bearer {{token}}
+
+### 6.8 Past due / suspended / expired schools
+GET {{subUrl}}/admin/dashboard/past-due
+Authorization: Bearer {{token}}
+
+# ================================================================
+# 7. CRON — process expirations (daily job)
+# ================================================================
+
+### 7.1 Run the auto-expire batch
+POST {{subUrl}}/admin/process-expired
+Authorization: Bearer {{token}}
+
+# ================================================================
+# 8. NEGATIVE TESTS
+# ================================================================
+
+### 8.1 Subscribe to Trial (idempotent — should succeed both times)
+POST {{subUrl}}/admin/schools/{{schoolId}}/subscribe
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "plan": "Trial"
+}
+
+### 8.2 Downgrade to Premium (invalid — Premium is higher) → expect 400
+POST {{subUrl}}/admin/schools/{{schoolId}}/downgrade
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "newPlan": "Premium"
+}
+
+### 8.3 Upgrade to Basic (invalid — Basic is lower) → expect 400
+POST {{subUrl}}/admin/schools/{{schoolId}}/upgrade
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "newPlan": "Basic"
+}
+
+### 8.4 Subscribe to Basic without payment details → expect 400
+POST {{subUrl}}/admin/schools/{{schoolId}}/subscribe
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "plan": "Basic"
+}
+
+### 8.5 Deduct more SMS credits than available → expect 400
+POST {{subUrl}}/admin/schools/{{schoolId}}/sms-credits/deduct
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "credits": 999999
+}
+
+### 8.6 Get non-existent payment → expect 404
+GET {{subUrl}}/admin/payments/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}
