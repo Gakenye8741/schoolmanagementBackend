@@ -70,11 +70,19 @@ export interface GeneratorAllocation {
   preferredTeacherIds: string[];
 }
 
+// ✅ CHANGED — added the 5 extra fields the frontend sends
 export interface GeneratorConfig {
   maxPerTeacherPerDay?: number;
   maxPerTeacherPerWeek?: number;
   morningHeavySubjectIds?: string[];
   seed?: number;
+
+  // NEW — must match the frontend
+  maxPerSubjectPerDay?: Record<string, number>;   // subjectId -> cap; 0 = blocked
+  dailySubjectIds?: string[];                      // must appear every Mon–Fri
+  maxDoublesPerDay?: number;
+  avoidAdjacentPairs?: [string, string][];
+  spreadSubjects?: boolean;
 }
 
 export interface GenerateSchoolTimetableInput {
@@ -1740,7 +1748,6 @@ export const getClassSlotsPerDayService = async (
   }
 };
 
-// ✅ REFACTORED — uses relations, no innerJoin/groupBy
 export const getClassWorkloadService = async (
   classId: string
 ): Promise<TimetableResponse> => {
@@ -1980,7 +1987,6 @@ export const getTeacherFreePeriodsService = async (
   }
 };
 
-// ✅ REFACTORED — uses relations, no innerJoin/groupBy
 export const getTeacherWorkloadService = async (
   teacherId: string
 ): Promise<TimetableResponse> => {
@@ -2111,7 +2117,6 @@ export const getUpcomingLessonsForTeacherService = async (
   }
 };
 
-// ✅ REFACTORED — uses relations, no joins
 export const findLeastLoadedTeacherForSubjectService = async (
   schoolId: string,
   subjectId: string
@@ -2236,7 +2241,6 @@ export const exportSchoolTimetableService = async (
   }
 };
 
-// ✅ REFACTORED — uses relations, no joins
 export const getSubjectAllocationService = async (
   schoolId: string
 ): Promise<TimetableResponse> => {
@@ -2279,7 +2283,6 @@ export const getSubjectAllocationService = async (
   }
 };
 
-// ✅ REFACTORED — uses relations, one query
 export const getClassesWithNoTimetableService = async (
   schoolId: string
 ): Promise<TimetableResponse> => {
@@ -2720,11 +2723,17 @@ export const generateSchoolTimetableService = async (
       return { success: false, message: "allocations must be a non-empty array." };
     }
 
+    // ✅ CHANGED — normalise every field the frontend sends
     const config = {
       maxPerTeacherPerDay: rawConfig?.maxPerTeacherPerDay ?? 6,
       maxPerTeacherPerWeek: rawConfig?.maxPerTeacherPerWeek ?? 28,
       morningHeavySubjectIds: rawConfig?.morningHeavySubjectIds ?? [],
       seed: rawConfig?.seed ?? genSeed(),
+      maxPerSubjectPerDay: rawConfig?.maxPerSubjectPerDay ?? {},
+      dailySubjectIds: rawConfig?.dailySubjectIds ?? [],
+      maxDoublesPerDay: rawConfig?.maxDoublesPerDay ?? 1,
+      avoidAdjacentPairs: rawConfig?.avoidAdjacentPairs ?? [],
+      spreadSubjects: rawConfig?.spreadSubjects ?? true,
     };
 
     const school = await assertSchoolExists(schoolId);
@@ -2785,6 +2794,15 @@ export const generateSchoolTimetableService = async (
       allocByClass
     );
 
+    // ✅ NEW — produce human-readable rule violations
+    const ruleIssues = checkGeneratedRules(
+      result.slots,
+      teachingPeriods,
+      allocByClass,
+      config,
+      cls
+    );
+
     if (dryRun) {
       return {
         success: true,
@@ -2792,6 +2810,7 @@ export const generateSchoolTimetableService = async (
         slots: result.slots as any,
         count: result.slots.length,
         warnings: result.warnings,
+        issues: ruleIssues,
         unplaced: result.unplaced,
         stats: {
           ...stats,
@@ -2841,6 +2860,7 @@ export const generateSchoolTimetableService = async (
         teachersConsidered: teachers.length,
         seed: config.seed,
         warnings: result.warnings.length,
+        issues: ruleIssues.length,
       },
     });
 
@@ -2850,6 +2870,7 @@ export const generateSchoolTimetableService = async (
       slots: enriched as TimetableSlotWithPeriod[],
       count: enriched.length,
       warnings: result.warnings,
+      issues: ruleIssues,
       unplaced: result.unplaced,
       stats: {
         ...stats,
@@ -2861,6 +2882,10 @@ export const generateSchoolTimetableService = async (
     return { success: false, message: e?.message || "Failed to generate timetable." };
   }
 };
+
+// ================================================================
+// 8a. GENERATOR — core loop (CHANGED)
+// ================================================================
 
 function runGenerator(
   cls: TSelectClass[],
@@ -2884,6 +2909,7 @@ function runGenerator(
   const warnings: string[] = [];
   const unplaced: ReturnType<typeof runGenerator>["unplaced"] = [];
 
+  // ── existing teacher tracking ─────────────────────────────
   const teacherDayLoad = new Map<string, Map<Weekday, number>>();
   const teacherWeekLoad = new Map<string, number>();
   const teacherBusy = new Map<string, Set<string>>();
@@ -2893,8 +2919,48 @@ function runGenerator(
     teacherBusy.set(t.id, new Set());
   }
 
+  // ── existing class tracking ───────────────────────────────
   const classBusy = new Map<string, Set<string>>();
   for (const c of cls) classBusy.set(c.id, new Set());
+
+  // ── NEW per-class rule state ──────────────────────────────
+  const subjectDayCount = new Map<string, Map<Weekday, Map<string, number>>>();
+  const doubleDayCount = new Map<string, Map<Weekday, number>>();
+  const classSlotSubject = new Map<string, Map<string, string>>(); // `${day}::${periodId}` -> subjectId
+  for (const c of cls) {
+    subjectDayCount.set(c.id, new Map());
+    doubleDayCount.set(c.id, new Map());
+    classSlotSubject.set(c.id, new Map());
+  }
+
+  const caps = config.maxPerSubjectPerDay ?? {};
+  const dailyIds = config.dailySubjectIds ?? [];
+  const maxDoubles = config.maxDoublesPerDay ?? 1;
+  const pairsToAvoid = config.avoidAdjacentPairs ?? [];
+  const spread = config.spreadSubjects !== false;
+
+  const countOnDay = (classId: string, day: Weekday, sid: string) =>
+    subjectDayCount.get(classId)!.get(day)?.get(sid) ?? 0;
+
+  const recordSlot = (s: GeneratedSlot) => {
+    const m = subjectDayCount.get(s.classId)!;
+    if (!m.has(s.dayOfWeek)) m.set(s.dayOfWeek, new Map());
+    m.get(s.dayOfWeek)!.set(
+      s.subjectId,
+      (m.get(s.dayOfWeek)!.get(s.subjectId) ?? 0) + 1
+    );
+    classBusy.get(s.classId)!.add(`${s.dayOfWeek}::${s.periodId}`);
+    classSlotSubject.get(s.classId)!.set(`${s.dayOfWeek}::${s.periodId}`, s.subjectId);
+    if (s.teacherId) {
+      const dl = teacherDayLoad.get(s.teacherId)!;
+      dl.set(s.dayOfWeek, (dl.get(s.dayOfWeek) ?? 0) + 1);
+      teacherWeekLoad.set(
+        s.teacherId,
+        (teacherWeekLoad.get(s.teacherId) ?? 0) + 1
+      );
+      teacherBusy.get(s.teacherId)!.add(`${s.dayOfWeek}::${s.periodId}`);
+    }
+  };
 
   const sorted = [...cls].sort((a, b) => {
     const sumA = (allocByClass.get(a.id) ?? []).reduce(
@@ -2910,7 +2976,9 @@ function runGenerator(
 
   for (const klass of sorted) {
     const allocs = allocByClass.get(klass.id) ?? [];
+    const className = klass.stream ?? klass.id.slice(0, 8);
 
+    // ── build flat lesson list ──────────────────────────────
     const lessons: Array<{
       subjectId: string;
       isDouble: boolean;
@@ -2945,6 +3013,70 @@ function runGenerator(
       }
     }
 
+    // ══════════════════════════════════════════════════════
+    // PRE-PASS: seed each daily subject 1× on every school day
+    // ══════════════════════════════════════════════════════
+    const seededCount = new Map<string, number>();
+    for (const sid of dailyIds) {
+      const alloc = allocs.find((a) => a.subjectId === sid);
+      if (!alloc) continue;
+
+      if (alloc.lessonsPerWeek < WEEKDAYS.length) {
+        warnings.push(
+          `${className}: "${sid.slice(0, 8)}" is marked daily but only has ${alloc.lessonsPerWeek} lesson(s)/week — needs ≥5.`
+        );
+        continue;
+      }
+
+      const cap = caps[sid];
+      if (cap === 0) {
+        warnings.push(
+          `${className}: "${sid.slice(0, 8)}" is daily but its per-day cap is 0 (blocked).`
+        );
+        continue;
+      }
+
+      let seeded = 0;
+      const seedsNeeded = Math.min(WEEKDAYS.length, alloc.lessonsPerWeek);
+
+      for (const day of WEEKDAYS) {
+        if (seeded >= seedsNeeded) break;
+        const placed = tryPlaceOneOnDay(
+          klass.id,
+          sid,
+          day,
+          alloc.preferredTeacherIds,
+          teachingPeriods,
+          config,
+          rng,
+          teacherDayLoad,
+          teacherWeekLoad,
+          teacherBusy,
+          classBusy,
+          subjectDayCount,
+          classSlotSubject,
+          caps,
+          pairsToAvoid,
+          spread
+        );
+        if (placed) {
+          slots.push(placed);
+          recordSlot(placed);
+          seeded++;
+        }
+      }
+      seededCount.set(sid, seeded);
+
+      if (seeded < seedsNeeded) {
+        warnings.push(
+          `${className}: only seeded "${sid.slice(0, 8)}" on ${seeded}/${seedsNeeded} days (no free slot with a free teacher).`
+        );
+      }
+    }
+
+    // ══════════════════════════════════════════════════════
+    // MAIN PASS
+    // ══════════════════════════════════════════════════════
     const shuffled = shuffleArray(lessons, rng);
     shuffled.sort((a, b) => {
       if (a.isDouble !== b.isDouble) return a.isDouble ? -1 : 1;
@@ -2955,6 +3087,13 @@ function runGenerator(
     });
 
     for (const lesson of shuffled) {
+      // Skip lessons that the pre-pass already seeded
+      const remaining = seededCount.get(lesson.subjectId) ?? 0;
+      if (remaining > 0) {
+        seededCount.set(lesson.subjectId, remaining - 1);
+        continue;
+      }
+
       const candidates =
         lesson.preferredTeacherIds.length > 0
           ? teachers.filter((t) => lesson.preferredTeacherIds.includes(t.id))
@@ -2970,29 +3109,31 @@ function runGenerator(
         teacherDayLoad,
         teacherWeekLoad,
         teacherBusy,
-        classBusy
+        classBusy,
+        subjectDayCount,
+        doubleDayCount,
+        classSlotSubject,
+        caps,
+        maxDoubles,
+        pairsToAvoid,
+        spread
       );
 
       if (placed.length > 0) {
-        slots.push(...placed);
+        if (placed.length > 1 && placed[0]!.subjectId === placed[1]!.subjectId) {
+          const day = placed[0]!.dayOfWeek;
+          const dm = doubleDayCount.get(klass.id)!;
+          dm.set(day, (dm.get(day) ?? 0) + 1);
+        }
         for (const s of placed) {
-          classBusy.get(s.classId)!.add(`${s.dayOfWeek}::${s.periodId}`);
-          if (s.teacherId) {
-            const dl = teacherDayLoad.get(s.teacherId)!;
-            dl.set(s.dayOfWeek, (dl.get(s.dayOfWeek) ?? 0) + 1);
-            teacherWeekLoad.set(
-              s.teacherId,
-              (teacherWeekLoad.get(s.teacherId) ?? 0) + 1
-            );
-            teacherBusy.get(s.teacherId)!.add(`${s.dayOfWeek}::${s.periodId}`);
-          }
+          slots.push(s);
+          recordSlot(s);
         }
       } else {
-        const className = klass.stream ?? klass.id.slice(0, 8);
         const reason =
           lesson.preferredTeacherIds.length > 0
-            ? "No preferred teacher available at any free slot"
-            : "No free slot with an available teacher";
+            ? "No preferred teacher available at any valid slot"
+            : "No valid slot (would break a cap/adjacency rule, or no free teacher)";
         warnings.push(
           `Could not place ${lesson.isDouble ? "double " : ""}lesson (subject ${lesson.subjectId.slice(0, 8)}) in ${className}: ${reason}`
         );
@@ -3010,6 +3151,78 @@ function runGenerator(
   return { slots, warnings, unplaced };
 }
 
+// ================================================================
+// 8b. GENERATOR — placement primitives (CHANGED)
+// ================================================================
+
+/**
+ * Place a single (non-double) lesson on an EXACT day.
+ * Used by the pre-pass to force daily subjects onto every school day.
+ */
+function tryPlaceOneOnDay(
+  classId: string,
+  subjectId: string,
+  day: Weekday,
+  preferredTeacherIds: string[],
+  teachingPeriods: TSelectPeriod[],
+  config: Required<Omit<GeneratorConfig, "seed">> & { seed: number },
+  rng: () => number,
+  teacherDayLoad: Map<string, Map<Weekday, number>>,
+  teacherWeekLoad: Map<string, number>,
+  teacherBusy: Map<string, Set<string>>,
+  classBusy: Map<string, Set<string>>,
+  subjectDayCount: Map<string, Map<Weekday, Map<string, number>>>,
+  classSlotSubject: Map<string, Map<string, string>>,
+  caps: Record<string, number>,
+  pairsToAvoid: [string, string][],
+  spread: boolean
+): GeneratedSlot | null {
+  const cap = caps[subjectId];
+  if (cap === 0) return null;
+
+  const dayCount =
+    subjectDayCount.get(classId)?.get(day)?.get(subjectId) ?? 0;
+  if (cap !== undefined && dayCount >= cap) return null;
+
+  const teacherIds = [...teacherDayLoad.keys()];
+  const pool =
+    preferredTeacherIds.length > 0
+      ? teacherIds.filter((id) => preferredTeacherIds.includes(id))
+      : teacherIds;
+
+  const shuffledPeriods = shuffleArray(teachingPeriods, rng);
+  const busySet = classBusy.get(classId)!;
+  const slotMap = classSlotSubject.get(classId)!;
+
+  for (const period of shuffledPeriods) {
+    if (busySet.has(`${day}::${period.id}`)) continue;
+    if (!canPlaceAdjacent(day, period.id, subjectId, teachingPeriods, slotMap, pairsToAvoid, spread))
+      continue;
+
+    for (const tid of pool) {
+      const dayLoad = teacherDayLoad.get(tid)?.get(day) ?? 0;
+      if (dayLoad >= config.maxPerTeacherPerDay) continue;
+      const weekLoad = teacherWeekLoad.get(tid) ?? 0;
+      if (weekLoad >= config.maxPerTeacherPerWeek) continue;
+      const tBusy = teacherBusy.get(tid)!;
+      if (tBusy.has(`${day}::${period.id}`)) continue;
+
+      return {
+        classId,
+        dayOfWeek: day,
+        periodId: period.id,
+        subjectId,
+        teacherId: tid,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Main placement function — respects caps, doubles-per-day,
+ * "spread", and "never adjacent" rules.
+ */
 function tryPlaceLesson(
   classId: string,
   lesson: { subjectId: string; isDouble: boolean; preferredTeacherIds: string[] },
@@ -3020,18 +3233,48 @@ function tryPlaceLesson(
   teacherDayLoad: Map<string, Map<Weekday, number>>,
   teacherWeekLoad: Map<string, number>,
   teacherBusy: Map<string, Set<string>>,
-  classBusy: Map<string, Set<string>>
+  classBusy: Map<string, Set<string>>,
+  subjectDayCount: Map<string, Map<Weekday, Map<string, number>>>,
+  doubleDayCount: Map<string, Map<Weekday, number>>,
+  classSlotSubject: Map<string, Map<string, string>>,
+  caps: Record<string, number>,
+  maxDoubles: number,
+  pairsToAvoid: [string, string][],
+  spread: boolean
 ): GeneratedSlot[] {
   const classBusySet = classBusy.get(classId)!;
+  const slotMap = classSlotSubject.get(classId)!;
   const shuffledDays = shuffleArray(WEEKDAYS, rng);
   const periodOrder = config.morningHeavySubjectIds.includes(lesson.subjectId)
     ? teachingPeriods
     : shuffleArray(teachingPeriods, rng);
 
+  const cap = caps[lesson.subjectId];
+  if (cap === 0) return []; // blocked
+
   for (const day of shuffledDays) {
+    const dayCount =
+      subjectDayCount.get(classId)?.get(day)?.get(lesson.subjectId) ?? 0;
+    const needed = lesson.isDouble ? 2 : 1;
+
+    if (cap !== undefined && dayCount + needed > cap) continue;
+
+    if (lesson.isDouble) {
+      const dblToday = doubleDayCount.get(classId)?.get(day) ?? 0;
+      if (dblToday >= maxDoubles) continue;
+    }
+
     for (let i = 0; i < periodOrder.length; i++) {
       const period = periodOrder[i]!;
       if (classBusySet.has(`${day}::${period.id}`)) continue;
+
+      // Single lesson — check both immediate neighbours
+      if (!lesson.isDouble) {
+        if (
+          !canPlaceAdjacent(day, period.id, lesson.subjectId, teachingPeriods, slotMap, pairsToAvoid, spread)
+        )
+          continue;
+      }
 
       let nextPeriod: TSelectPeriod | undefined;
       if (lesson.isDouble) {
@@ -3039,6 +3282,15 @@ function tryPlaceLesson(
         nextPeriod = teachingPeriods[idx + 1];
         if (!nextPeriod) continue;
         if (classBusySet.has(`${day}::${nextPeriod.id}`)) continue;
+
+        // Double lesson — only the OUTER neighbours matter
+        const prevOuter = teachingPeriods[idx - 1];
+        const nextOuter = teachingPeriods[idx + 2];
+        if (
+          !canPlaceSingleNeighbour(day, prevOuter, lesson.subjectId, slotMap, pairsToAvoid, spread) ||
+          !canPlaceSingleNeighbour(day, nextOuter, lesson.subjectId, slotMap, pairsToAvoid, spread)
+        )
+          continue;
       }
 
       for (const teacher of teacherCandidates) {
@@ -3078,6 +3330,59 @@ function tryPlaceLesson(
 
   return [];
 }
+
+/**
+ * Check whether placing `subjectId` at `periodId` breaks the "spread"
+ * rule (same subject cannot be next to itself) or the "never next to"
+ * rule. Used for single-lesson placements where BOTH neighbours matter.
+ */
+function canPlaceAdjacent(
+  day: Weekday,
+  periodId: string,
+  subjectId: string,
+  teachingPeriods: TSelectPeriod[],
+  slotMap: Map<string, string>,
+  pairsToAvoid: [string, string][],
+  spread: boolean
+): boolean {
+  const idx = teachingPeriods.findIndex((p) => p.id === periodId);
+  if (idx < 0) return true;
+
+  const prev = teachingPeriods[idx - 1];
+  const next = teachingPeriods[idx + 1];
+  return (
+    canPlaceSingleNeighbour(day, prev, subjectId, slotMap, pairsToAvoid, spread) &&
+    canPlaceSingleNeighbour(day, next, subjectId, slotMap, pairsToAvoid, spread)
+  );
+}
+
+/** Check one neighbour slot against spread + never-adjacent rules. */
+function canPlaceSingleNeighbour(
+  day: Weekday,
+  neighbour: TSelectPeriod | undefined,
+  subjectId: string,
+  slotMap: Map<string, string>,
+  pairsToAvoid: [string, string][],
+  spread: boolean
+): boolean {
+  if (!neighbour) return true;
+  const neighbourSub = slotMap.get(`${day}::${neighbour.id}`);
+  if (!neighbourSub) return true;
+  if (spread && neighbourSub === subjectId) return false;
+  if (
+    pairsToAvoid.some(
+      ([a, b]) =>
+        (a === neighbourSub && b === subjectId) ||
+        (a === subjectId && b === neighbourSub)
+    )
+  )
+    return false;
+  return true;
+}
+
+// ================================================================
+// 8c. GENERATOR — stats (unchanged) + rule report (NEW)
+// ================================================================
 
 function buildGeneratorStats(
   slots: GeneratedSlot[],
@@ -3133,14 +3438,88 @@ function buildGeneratorStats(
   };
 }
 
+/**
+ * Post-flight rule report — tells the caller exactly which caps /
+ * daily / doubles rules the generated timetable breaks. Empty array
+ * means the timetable satisfies every configured rule.
+ */
+function checkGeneratedRules(
+  slots: GeneratedSlot[],
+  teachingPeriods: TSelectPeriod[],
+  allocByClass: Map<string, GeneratorAllocation[]>,
+  config: Required<Omit<GeneratorConfig, "seed">> & { seed: number },
+  cls: TSelectClass[]
+): string[] {
+  const issues: string[] = [];
+  const caps = config.maxPerSubjectPerDay ?? {};
+  const dailyIds = config.dailySubjectIds ?? [];
+  const maxDoubles = config.maxDoublesPerDay ?? 1;
+
+  const className = (cid: string) =>
+    cls.find((c) => c.id === cid)?.stream ?? cid.slice(0, 8);
+
+  const byClass = new Map<string, GeneratedSlot[]>();
+  for (const s of slots) {
+    if (!byClass.has(s.classId)) byClass.set(s.classId, []);
+    byClass.get(s.classId)!.push(s);
+  }
+
+  for (const klass of cls) {
+    const mine = byClass.get(klass.id) ?? [];
+
+    for (const day of WEEKDAYS) {
+      const daySlots = mine.filter((s) => s.dayOfWeek === day);
+      const counts: Record<string, number> = {};
+      for (const s of daySlots) {
+        counts[s.subjectId] = (counts[s.subjectId] ?? 0) + 1;
+      }
+
+      for (const [sid, n] of Object.entries(counts)) {
+        const cap = caps[sid];
+        if (cap === 0) {
+          issues.push(
+            `${className(klass.id)} · ${day}: ${sid.slice(0, 8)} is blocked (0/day) but placed ${n}×`
+          );
+        } else if (cap !== undefined && n > cap) {
+          issues.push(
+            `${className(klass.id)} · ${day}: ${sid.slice(0, 8)} appears ${n}× (cap ${cap})`
+          );
+        }
+      }
+
+      for (const sid of dailyIds) {
+        const alloc = (allocByClass.get(klass.id) ?? []).find(
+          (a) => a.subjectId === sid
+        );
+        if (!alloc || alloc.lessonsPerWeek < WEEKDAYS.length) continue;
+        if (!counts[sid]) {
+          issues.push(
+            `${className(klass.id)} · ${day}: ${sid.slice(0, 8)} missing (marked daily)`
+          );
+        }
+      }
+
+      // doubles count
+      let doublesToday = 0;
+      for (let i = 0; i < teachingPeriods.length - 1; i++) {
+        const p1 = daySlots.find((s) => s.periodId === teachingPeriods[i]!.id);
+        const p2 = daySlots.find((s) => s.periodId === teachingPeriods[i + 1]!.id);
+        if (p1 && p2 && p1.subjectId === p2.subjectId) doublesToday++;
+      }
+      if (doublesToday > maxDoubles) {
+        issues.push(
+          `${className(klass.id)} · ${day}: ${doublesToday} doubles (cap ${maxDoubles})`
+        );
+      }
+    }
+  }
+  return issues;
+}
+
 // ================================================================
-// 9. ADDITIONAL SERVICES (NEW)
+// 9. ADDITIONAL SERVICES (unchanged)
 // ================================================================
 
-/**
- * Seed the standard Kenyan school day (13 periods).
- * Fails if the school already has periods.
- */
 export const seedStandardSchoolDayService = async (
   schoolId: string,
   actorId: string | null = null
@@ -3185,10 +3564,6 @@ export const seedStandardSchoolDayService = async (
   }
 };
 
-/**
- * Reset a school's timetable setup: delete ALL slots AND periods.
- * Use with caution — intended for onboarding or full redo.
- */
 export const resetSchoolSetupService = async (
   schoolId: string,
   confirm: boolean,
@@ -3239,16 +3614,12 @@ export const resetSchoolSetupService = async (
   }
 };
 
-/**
- * Duplicate all slots from one day to another (school-wide or per-class).
- * Skips target slots that already exist.
- */
 export const duplicateDayService = async (
   input: {
     schoolId: string;
     sourceDay: Weekday;
     targetDay: Weekday;
-    classIds?: string[]; // optional — omit to copy ALL classes
+    classIds?: string[];
   },
   actorId: string | null = null
 ): Promise<TimetableResponse> => {
@@ -3281,7 +3652,6 @@ export const duplicateDayService = async (
       };
     }
 
-    // Find existing target slots
     const targetWhere = classIds?.length
       ? and(
           eq(timetables.schoolId, schoolId),
@@ -3297,7 +3667,6 @@ export const duplicateDayService = async (
       targetSlots.map((s) => `${s.classId}::${s.periodId}`)
     );
 
-    // Also catch teacher conflicts on the target day
     const teacherIds = [
       ...new Set(sourceSlots.map((s) => s.teacherId).filter(Boolean)),
     ] as string[];
@@ -3378,9 +3747,6 @@ export const duplicateDayService = async (
   }
 };
 
-/**
- * Per-class coverage report — how full each class's timetable is.
- */
 export const getPerClassCoverageService = async (
   schoolId: string
 ): Promise<TimetableResponse> => {
@@ -3443,22 +3809,16 @@ export const getPerClassCoverageService = async (
   }
 };
 
-/**
- * Get all teachers qualified to teach a subject (via teacher_subjects).
- * Uses relations — no join.
- */
 export const getPreferredTeachersForSubjectService = async (
   schoolId: string,
   subjectId: string
 ): Promise<TimetableResponse> => {
   try {
-    // Load teacher_subjects entries for this subject + their teachers
     const links = await db.query.teacherSubjects.findMany({
       where: eq(teacherSubjects.subjectId, subjectId),
       with: { teacher: true, subject: true },
     });
 
-    // Filter to teachers in this school
     const filtered = links
       .filter((l) => l.teacher && l.teacher.schoolId === schoolId)
       .map((l) => ({
@@ -3469,7 +3829,6 @@ export const getPreferredTeachersForSubjectService = async (
         subjectName: l.subject?.name ?? null,
       }));
 
-    // Add current load per teacher for this subject
     const slots = await db.query.timetables.findMany({
       where: and(
         eq(timetables.schoolId, schoolId),
@@ -3502,16 +3861,12 @@ export const getPreferredTeachersForSubjectService = async (
   }
 };
 
-/**
- * Auto-assign teachers to slots that currently have no teacher.
- * Picks the least-loaded teacher for each subject who is free at that day/period.
- */
 export const autoAssignMissingTeachersService = async (
   schoolId: string,
   config: {
     maxPerTeacherPerDay?: number;
     maxPerTeacherPerWeek?: number;
-    preferSubjectQualified?: boolean; // default true — use teacher_subjects first
+    preferSubjectQualified?: boolean;
   } = {},
   actorId: string | null = null
 ): Promise<TimetableResponse> => {
@@ -3523,7 +3878,6 @@ export const autoAssignMissingTeachersService = async (
     const school = await assertSchoolExists(schoolId);
     if (!school) return { success: false, message: "School not found." };
 
-    // Load all unassigned slots
     const unassigned = await db
       .select()
       .from(timetables)
@@ -3542,7 +3896,6 @@ export const autoAssignMissingTeachersService = async (
       };
     }
 
-    // Load all teachers in the school
     const allTeachers = await db.query.users.findMany({
       where: and(
         eq(users.schoolId, schoolId),
@@ -3554,7 +3907,6 @@ export const autoAssignMissingTeachersService = async (
       return { success: false, message: "No teachers found for this school." };
     }
 
-    // Load all existing teacher assignments (for load + busy tracking)
     const assignedSlots = await db.query.timetables.findMany({
       where: and(
         eq(timetables.schoolId, schoolId),
@@ -3582,7 +3934,6 @@ export const autoAssignMissingTeachersService = async (
       teacherBusy.get(s.teacherId)!.add(`${s.dayOfWeek}::${s.periodId}`);
     }
 
-    // Load teacher_subjects links (for qualified teachers)
     const links = await db.query.teacherSubjects.findMany({
       where: eq(teacherSubjects.subjectId, unassigned[0]!.subjectId),
     });
@@ -3593,7 +3944,6 @@ export const autoAssignMissingTeachersService = async (
       }
       qualifiedBySubject.get(l.subjectId)!.add(l.teacherId);
     }
-    // Load remaining subject links
     const otherSubjectIds = [...new Set(unassigned.map((s) => s.subjectId))];
     if (otherSubjectIds.length > 1) {
       const allLinks = await db.query.teacherSubjects.findMany({
@@ -3607,7 +3957,6 @@ export const autoAssignMissingTeachersService = async (
       }
     }
 
-    // Assign each unassigned slot
     const assignments: Array<{ slotId: string; teacherId: string }> = [];
     const skipped: any[] = [];
 
@@ -3618,7 +3967,6 @@ export const autoAssignMissingTeachersService = async (
         : allTeachers;
       const pool = preferred.length > 0 ? preferred : allTeachers;
 
-      // Sort pool by current load (least first)
       const ranked = [...pool].sort((a, b) => {
         const loadA = teacherWeekLoad.get(a.id) ?? 0;
         const loadB = teacherWeekLoad.get(b.id) ?? 0;
@@ -3658,7 +4006,6 @@ export const autoAssignMissingTeachersService = async (
       }
     }
 
-    // Apply assignments
     for (const a of assignments) {
       await db
         .update(timetables)
@@ -3693,10 +4040,6 @@ export const autoAssignMissingTeachersService = async (
   }
 };
 
-/**
- * Detailed conflicts report with class/subject/teacher names resolved.
- * Uses relations to fetch all entities in one round-trip per table.
- */
 export const getDetailedConflictsService = async (
   schoolId: string
 ): Promise<TimetableResponse> => {
@@ -3709,7 +4052,6 @@ export const getDetailedConflictsService = async (
       with: { class: true, subject: true, teacher: true },
     });
 
-    // Enrich with period
     const periodIds = [...new Set(slots.map((s) => s.periodId))];
     const periodRows = periodIds.length
       ? await db
@@ -3728,7 +4070,6 @@ export const getDetailedConflictsService = async (
 
     const conflicts: any[] = [];
 
-    // Teacher double-booking
     const byTeacher = new Map<string, Enriched[]>();
     for (const s of enriched) {
       if (!s.teacherId) continue;
@@ -3759,7 +4100,6 @@ export const getDetailedConflictsService = async (
       }
     }
 
-    // Room double-booking
     const byRoom = new Map<string, Enriched[]>();
     for (const s of enriched) {
       if (!s.room) continue;

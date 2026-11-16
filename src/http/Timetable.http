@@ -14,6 +14,8 @@
 ### 🆕 NEW IN THIS VERSION:
 ###   * STEP 1c  — one-click seed of the standard Kenyan school day
 ###   * STEP 3.0 — automatic whole-school generator (preview + commit)
+###              — NOW SUPPORTS: daily subjects, per-subject daily caps,
+###                doubles-per-day cap, "never next to" pairs, and spread rules
 ###   * STEP 6m  — view teachers qualified for a subject (sorted by load)
 ###   * STEP 7j  — per-class coverage report
 ###   * STEP 7k  — detailed conflicts with names resolved
@@ -182,10 +184,26 @@ Authorization: Bearer {{token}}
 # Integrated Science, Agriculture & Nutrition, Pre-Technical Studies and
 # Creative Arts & Sports. Change the pattern to match your school's
 # lessons-per-week allocation.
+#
+# 🆕 GENERATOR CONFIG (all optional, all in the `config` object):
+#   maxPerTeacherPerDay     — positive int (default 6)
+#   maxPerTeacherPerWeek    — positive int (default 28)
+#   morningHeavySubjectIds  — subject[] placed in the first half of the day
+#   maxDoublesPerDay        — 0 = no doubles, 1 = at most one double/day (default)
+#   spreadSubjects          — true = same subject never back-to-back unless
+#                             it's a chosen double
+#   dailySubjectIds         — subject[] that MUST appear Mon–Fri
+#                             (needs ≥5 lessons/week to be satisfiable)
+#   maxPerSubjectPerDay     — { subjectId: cap }, 0 = BLOCKED (not taught)
+#                             (for daily subjects, cap must be ≥ ceil(lessons/5))
+#   avoidAdjacentPairs      — [[subjectA, subjectB], ...] that must NOT
+#                             sit side-by-side
+#   seed                    — number; reuse for deterministic layouts
 ################################################################
 
 ### 3.0a. 🆕 PREVIEW what the generator would produce (admin)
-# Dry-run — nothing is written to the DB. Returns slots + per-class/per-teacher stats.
+# Dry-run — nothing is written to the DB. Returns slots + per-class/per-teacher
+# stats + `issues[]` (violations that survived, if any).
 # Useful for tuning allocations before you commit.
 POST {{baseUrl}}/schools/{{schoolId}}/timetable/generate/preview
 Content-Type: {{contentType}}
@@ -206,7 +224,20 @@ Authorization: Bearer {{token}}
     "maxPerTeacherPerDay": 6,
     "maxPerTeacherPerWeek": 28,
     "morningHeavySubjectIds": ["{{MAT}}", "{{ENG}}", "{{SCI}}"],
-    "seed": 42
+    "seed": 42,
+
+    "spreadSubjects": true,
+    "maxDoublesPerDay": 1,
+    "dailySubjectIds": ["{{MAT}}", "{{ENG}}", "{{KIS}}"],
+    "maxPerSubjectPerDay": {
+      "{{MAT}}": 2,
+      "{{ENG}}": 2,
+      "{{KIS}}": 1,
+      "{{SCI}}": 2,
+      "{{SST}}": 1,
+      "{{CRE}}": 1
+    },
+    "avoidAdjacentPairs": [["{{ENG}}", "{{KIS}}"]]
   }
 }
 
@@ -235,7 +266,20 @@ Authorization: Bearer {{token}}
     "maxPerTeacherPerDay": 6,
     "maxPerTeacherPerWeek": 28,
     "morningHeavySubjectIds": ["{{MAT}}", "{{ENG}}", "{{SCI}}"],
-    "seed": 42
+    "seed": 42,
+
+    "spreadSubjects": true,
+    "maxDoublesPerDay": 1,
+    "dailySubjectIds": ["{{MAT}}", "{{ENG}}", "{{KIS}}"],
+    "maxPerSubjectPerDay": {
+      "{{MAT}}": 2,
+      "{{ENG}}": 2,
+      "{{KIS}}": 1,
+      "{{SCI}}": 2,
+      "{{SST}}": 1,
+      "{{CRE}}": 1
+    },
+    "avoidAdjacentPairs": [["{{ENG}}", "{{KIS}}"]]
   },
   "options": {
     "clearExisting": true,

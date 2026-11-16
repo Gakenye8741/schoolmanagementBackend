@@ -125,9 +125,13 @@ const isUuid = (v: unknown): v is string =>
   typeof v === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
-/** Shared validator for generator payloads — used by preview & generate. */
+/**
+ * Shared validator for generator payloads — used by preview & generate.
+ * Validates classIds / allocations AND every field of `config` so bad
+ * input is rejected before it reaches the placement loop.
+ */
 function validateGeneratorPayload(body: any): string | null {
-  const { classIds, allocations } = body ?? {};
+  const { classIds, allocations, config } = body ?? {};
   if (!Array.isArray(classIds) || classIds.length === 0) {
     return "'classIds' must be a non-empty array.";
   }
@@ -141,6 +145,100 @@ function validateGeneratorPayload(body: any): string | null {
       return "'lessonsPerWeek' must be a non-negative number.";
     }
   }
+
+  // ── config (all fields optional) ─────────────────────────
+  if (config !== undefined && config !== null) {
+    if (typeof config !== "object" || Array.isArray(config)) {
+      return "'config' must be an object if provided.";
+    }
+
+    if (
+      config.maxPerTeacherPerDay !== undefined &&
+      (typeof config.maxPerTeacherPerDay !== "number" ||
+        !Number.isInteger(config.maxPerTeacherPerDay) ||
+        config.maxPerTeacherPerDay < 1)
+    ) {
+      return "'config.maxPerTeacherPerDay' must be a positive integer.";
+    }
+
+    if (
+      config.maxPerTeacherPerWeek !== undefined &&
+      (typeof config.maxPerTeacherPerWeek !== "number" ||
+        !Number.isInteger(config.maxPerTeacherPerWeek) ||
+        config.maxPerTeacherPerWeek < 1)
+    ) {
+      return "'config.maxPerTeacherPerWeek' must be a positive integer.";
+    }
+
+    if (
+      config.maxDoublesPerDay !== undefined &&
+      (typeof config.maxDoublesPerDay !== "number" ||
+        !Number.isInteger(config.maxDoublesPerDay) ||
+        config.maxDoublesPerDay < 0)
+    ) {
+      return "'config.maxDoublesPerDay' must be a non-negative integer.";
+    }
+
+    if (
+      config.spreadSubjects !== undefined &&
+      typeof config.spreadSubjects !== "boolean"
+    ) {
+      return "'config.spreadSubjects' must be a boolean.";
+    }
+
+    if (config.morningHeavySubjectIds !== undefined) {
+      if (
+        !Array.isArray(config.morningHeavySubjectIds) ||
+        !config.morningHeavySubjectIds.every(isUuid)
+      ) {
+        return "'config.morningHeavySubjectIds' must be an array of valid subject IDs.";
+      }
+    }
+
+    if (config.dailySubjectIds !== undefined) {
+      if (
+        !Array.isArray(config.dailySubjectIds) ||
+        !config.dailySubjectIds.every(isUuid)
+      ) {
+        return "'config.dailySubjectIds' must be an array of valid subject IDs.";
+      }
+    }
+
+    if (config.maxPerSubjectPerDay !== undefined) {
+      if (
+        typeof config.maxPerSubjectPerDay !== "object" ||
+        Array.isArray(config.maxPerSubjectPerDay) ||
+        config.maxPerSubjectPerDay === null
+      ) {
+        return "'config.maxPerSubjectPerDay' must be an object { subjectId: cap }.";
+      }
+      for (const [sid, cap] of Object.entries(config.maxPerSubjectPerDay)) {
+        if (!isUuid(sid)) {
+          return "'config.maxPerSubjectPerDay' keys must be valid subject IDs.";
+        }
+        if (typeof cap !== "number" || !Number.isInteger(cap) || cap < 0) {
+          return "'config.maxPerSubjectPerDay' values must be non-negative integers (0 = blocked).";
+        }
+      }
+    }
+
+    if (config.avoidAdjacentPairs !== undefined) {
+      if (!Array.isArray(config.avoidAdjacentPairs)) {
+        return "'config.avoidAdjacentPairs' must be an array of [subjectA, subjectB] pairs.";
+      }
+      for (const pair of config.avoidAdjacentPairs) {
+        if (
+          !Array.isArray(pair) ||
+          pair.length !== 2 ||
+          !isUuid(pair[0]) ||
+          !isUuid(pair[1])
+        ) {
+          return "'config.avoidAdjacentPairs' entries must be [subjectA, subjectB] pairs of subject IDs.";
+        }
+      }
+    }
+  }
+
   return null;
 }
 

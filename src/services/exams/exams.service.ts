@@ -1,6 +1,6 @@
 // services/exams.service.ts
 import {
-  eq, and, ne, asc, desc, count, sql, ilike, isNull, inArray, gte, lte,
+  eq, and, asc, desc, isNull, inArray,
 } from "drizzle-orm";
 
 import {
@@ -49,10 +49,21 @@ export interface UpdateExamInput {
   endDate?: string | null;
 }
 
-export interface CreateScheduleInput {
+/**
+ * Who sits the paper. Provide ONE of:
+ *   classId       → one class
+ *   gradeLevelId  → every stream in that grade
+ *   allClasses    → every class in the school
+ */
+export interface ScheduleTarget {
+  classId?: string | null;
+  gradeLevelId?: string | null;
+  allClasses?: boolean;
+}
+
+export interface CreateScheduleInput extends ScheduleTarget {
   schoolId: string;
   examId: string;
-  classId: string;
   subjectId: string;
   examDate: string;
   startTime?: string | null;
@@ -64,15 +75,16 @@ export interface CreateScheduleInput {
 export interface BulkCreateSchedulesInput {
   schoolId: string;
   examId: string;
-  schedules: Array<{
-    classId: string;
-    subjectId: string;
-    examDate: string;
-    startTime?: string | null;
-    endTime?: string | null;
-    venue?: string | null;
-    invigilatorId?: string | null;
-  }>;
+  schedules: Array<
+    ScheduleTarget & {
+      subjectId: string;
+      examDate: string;
+      startTime?: string | null;
+      endTime?: string | null;
+      venue?: string | null;
+      invigilatorId?: string | null;
+    }
+  >;
 }
 
 export interface EnterMarkInput {
@@ -185,14 +197,14 @@ const getEffectiveScale = async (
     const found = await db.query.gradingScales.findFirst({
       where: eq(gradingScales.id, examScaleId),
     });
-    scale = found ?? null;   // ← FIX: undefined → null
+    scale = found ?? null;
   }
 
   if (!scale) {
     const found = await db.query.gradingScales.findFirst({
       where: and(eq(gradingScales.schoolId, schoolId), eq(gradingScales.isDefault, true)),
     });
-    scale = found ?? null;   // ← FIX
+    scale = found ?? null;
   }
 
   if (!scale) return { scale: null, bands: [] };
@@ -215,6 +227,91 @@ const resolveBand = (
     }
   }
   return null;
+};
+
+/**
+ * Turns a schedule target (one class / a grade level / everyone) into concrete class IDs.
+ * For grade-level and school-wide targets we use the classes of the exam term's
+ * academic year (falling back to all classes when none match the year).
+ *
+ * NOTE: assumes `classes` has `gradeLevelId` and `academicYear` columns
+ * (the frontend ClassEntity already uses both).
+ */
+const resolveTargetClasses = async (
+  schoolId: string,
+  exam: TSelectTermExam,
+  target: ScheduleTarget
+): Promise<{ classIds: string[]; error?: string }> => {
+  if (target.classId) {
+    const cls = await db.query.classes.findFirst({
+      where: and(eq(classes.id, target.classId), eq(classes.schoolId, schoolId)),
+    });
+    if (!cls) return { classIds: [], error: "Class not found in this school." };
+    return { classIds: [cls.id] };
+  }
+
+  if (!target.gradeLevelId && !target.allClasses) {
+    return {
+      classIds: [],
+      error: "Choose who sits this paper: a class, a grade level, or all classes.",
+    };
+  }
+
+  const conditions = [eq(classes.schoolId, schoolId)];
+  if (target.gradeLevelId) conditions.push(eq(classes.gradeLevelId, target.gradeLevelId));
+
+  const all = await db.query.classes.findMany({ where: and(...conditions) });
+
+  const term = await assertTermInSchool(schoolId, exam.termId);
+  const sameYear = term ? all.filter((c) => c.academicYear === term.academicYear) : [];
+  const list = sameYear.length > 0 ? sameYear : all;
+
+  if (list.length === 0) {
+    return {
+      classIds: [],
+      error: target.gradeLevelId
+        ? "No classes were found for that grade level."
+        : "No classes were found in this school.",
+    };
+  }
+  return { classIds: list.map((c) => c.id) };
+};
+
+type ScheduleRow = {
+  schoolId: string;
+  examId: string;
+  classId: string;
+  subjectId: string;
+  examDate: string;
+  startTime: string | null;
+  endTime: string | null;
+  venue: string | null;
+  invigilatorId: string | null;
+};
+
+/** Insert-or-update schedule rows inside a single transaction. */
+const upsertScheduleRows = async (rows: ScheduleRow[]): Promise<TSelectExamSchedule[]> => {
+  return await db.transaction(async (tx) => {
+    const out: TSelectExamSchedule[] = [];
+    for (const r of rows) {
+      const [row] = await tx
+        .insert(examSchedules)
+        .values(r)
+        .onConflictDoUpdate({
+          target: [examSchedules.examId, examSchedules.classId, examSchedules.subjectId],
+          set: {
+            examDate: r.examDate,
+            startTime: r.startTime,
+            endTime: r.endTime,
+            venue: r.venue,
+            invigilatorId: r.invigilatorId,
+          },
+        })
+        .returning();
+      out.push(row);
+    }
+    return out;
+  });
 };
 
 // ================================================================
@@ -457,41 +554,47 @@ export const getExamStatisticsService = async (id: string): Promise<ExamResponse
 
 // ================================================================
 // 11. CREATE SCHEDULE
+//     One paper → one class, a whole grade (all streams), or all classes.
+//     One schedule row is created/updated per class automatically.
 // ================================================================
 export const createScheduleService = async (data: CreateScheduleInput): Promise<ExamResponse> => {
   try {
     const exam = await assertExamInSchool(data.schoolId, data.examId);
     if (!exam) return { success: false, message: "Exam not found in this school." };
 
-    const cls = await db.query.classes.findFirst({
-      where: and(eq(classes.id, data.classId), eq(classes.schoolId, data.schoolId)),
-    });
-    if (!cls) return { success: false, message: "Class not found in this school." };
-
     const subject = await db.query.subjects.findFirst({
       where: and(eq(subjects.id, data.subjectId), eq(subjects.schoolId, data.schoolId)),
     });
     if (!subject) return { success: false, message: "Subject not found in this school." };
 
-    const [row] = await db
-      .insert(examSchedules)
-      .values({
-        schoolId: data.schoolId,
-        examId: data.examId,
-        classId: data.classId,
-        subjectId: data.subjectId,
-        examDate: data.examDate,
-        startTime: data.startTime ?? null,
-        endTime: data.endTime ?? null,
-        venue: data.venue ?? null,
-        invigilatorId: data.invigilatorId ?? null,
-      })
-      .returning();
+    const target = await resolveTargetClasses(data.schoolId, exam, data);
+    if (target.error) return { success: false, message: target.error };
 
-    return { success: true, message: "Exam schedule created.", schedule: row };
+    const rows: ScheduleRow[] = target.classIds.map((classId) => ({
+      schoolId: data.schoolId,
+      examId: data.examId,
+      classId,
+      subjectId: data.subjectId,
+      examDate: data.examDate,
+      startTime: data.startTime ?? null,
+      endTime: data.endTime ?? null,
+      venue: data.venue ?? null,
+      invigilatorId: data.invigilatorId ?? null,
+    }));
+
+    const saved = await upsertScheduleRows(rows);
+
+    return {
+      success: true,
+      message:
+        saved.length === 1
+          ? `${subject.name} scheduled for 1 class.`
+          : `${subject.name} scheduled for ${saved.length} classes.`,
+      schedule: saved[0],
+      schedules: saved,
+      count: saved.length,
+    };
   } catch (e: any) {
-    if (String(e?.code) === "23505")
-      return { success: false, message: "This class already has a schedule for that subject." };
     return { success: false, message: e?.message || "Failed to create schedule." };
   }
 };
@@ -508,54 +611,43 @@ export const bulkCreateSchedulesService = async (
     if (data.schedules.length === 0)
       return { success: false, message: "No schedules provided." };
 
-    const classIds = [...new Set(data.schedules.map((s) => s.classId))];
     const subjectIds = [...new Set(data.schedules.map((s) => s.subjectId))];
-
-    const validClasses = await db.query.classes.findMany({
-      where: and(eq(classes.schoolId, data.schoolId), inArray(classes.id, classIds)),
-    });
-    if (validClasses.length !== classIds.length)
-      return { success: false, message: "One or more class IDs don't belong to this school." };
-
     const validSubjects = await db.query.subjects.findMany({
       where: and(eq(subjects.schoolId, data.schoolId), inArray(subjects.id, subjectIds)),
     });
     if (validSubjects.length !== subjectIds.length)
       return { success: false, message: "One or more subject IDs don't belong to this school." };
 
-    const result = await db.transaction(async (tx) => {
-      const rows: TSelectExamSchedule[] = [];
-      for (const s of data.schedules) {
-        const [row] = await tx
-          .insert(examSchedules)
-          .values({
-            schoolId: data.schoolId,
-            examId: data.examId,
-            classId: s.classId,
-            subjectId: s.subjectId,
-            examDate: s.examDate,
-            startTime: s.startTime ?? null,
-            endTime: s.endTime ?? null,
-            venue: s.venue ?? null,
-            invigilatorId: s.invigilatorId ?? null,
-          })
-          .onConflictDoUpdate({
-            target: [examSchedules.examId, examSchedules.classId, examSchedules.subjectId],
-            set: {
-              examDate: s.examDate,
-              startTime: s.startTime ?? null,
-              endTime: s.endTime ?? null,
-              venue: s.venue ?? null,
-              invigilatorId: s.invigilatorId ?? null,
-            },
-          })
-          .returning();
-        rows.push(row);
+    // Expand every entry into concrete (class, subject) rows. Later entries win.
+    const byKey = new Map<string, ScheduleRow>();
+    for (const [i, s] of data.schedules.entries()) {
+      const target = await resolveTargetClasses(data.schoolId, exam, s);
+      if (target.error) {
+        return { success: false, message: `Schedule ${i + 1}: ${target.error}` };
       }
-      return rows;
-    });
+      for (const classId of target.classIds) {
+        byKey.set(`${classId}::${s.subjectId}`, {
+          schoolId: data.schoolId,
+          examId: data.examId,
+          classId,
+          subjectId: s.subjectId,
+          examDate: s.examDate,
+          startTime: s.startTime ?? null,
+          endTime: s.endTime ?? null,
+          venue: s.venue ?? null,
+          invigilatorId: s.invigilatorId ?? null,
+        });
+      }
+    }
 
-    return { success: true, message: `Upserted ${result.length} schedule row(s).`, schedules: result, count: result.length };
+    const saved = await upsertScheduleRows([...byKey.values()]);
+
+    return {
+      success: true,
+      message: `Saved ${saved.length} schedule row(s) from ${data.schedules.length} entr${data.schedules.length === 1 ? "y" : "ies"}.`,
+      schedules: saved,
+      count: saved.length,
+    };
   } catch (e: any) {
     return { success: false, message: e?.message || "Failed to bulk-create schedules." };
   }
@@ -636,7 +728,7 @@ export const listSchedulesByDateService = async (
 // ================================================================
 export const updateScheduleService = async (
   id: string,
-  patch: Partial<CreateScheduleInput>
+  patch: Partial<Pick<CreateScheduleInput, "examDate" | "startTime" | "endTime" | "venue" | "invigilatorId">>
 ): Promise<ExamResponse> => {
   try {
     const existing = await db.query.examSchedules.findFirst({ where: eq(examSchedules.id, id) });
@@ -1096,7 +1188,7 @@ export const getSubjectMarksService = async (
 };
 
 // ================================================================
-// 29. COMPUTE GRADES FOR EXAM (batched — no await in loop)
+// 29. COMPUTE GRADES FOR EXAM (batched — no await in loop per row)
 // ================================================================
 export const computeGradesForExamService = async (examId: string): Promise<ExamResponse> => {
   try {
@@ -1111,7 +1203,6 @@ export const computeGradesForExamService = async (examId: string): Promise<ExamR
       where: eq(examResults.examId, examId),
     });
 
-    // Bucket IDs by (grade, points) target — key is ALWAYS a string
     const byBucket = new Map<string, string[]>();
 
     for (const r of results) {
@@ -1125,10 +1216,8 @@ export const computeGradesForExamService = async (examId: string): Promise<ExamR
         newPoints = band?.points ?? null;
       }
 
-      // Skip if nothing changes
       if (newGrade === r.grade && newPoints === r.points) continue;
 
-      // Key is a STRING: "null::null" or "A::12" or "B::9"
       const key = `${newGrade ?? "null"}::${newPoints ?? "null"}`;
       if (!byBucket.has(key)) byBucket.set(key, []);
       byBucket.get(key)!.push(r.id);
@@ -1169,7 +1258,6 @@ export const computeSubjectPositionsService = async (examId: string): Promise<Ex
       where: eq(examResults.examId, examId),
     });
 
-    // Group by (classId, subjectId)
     const groups = new Map<string, TSelectExamResult[]>();
     for (const r of results) {
       if (r.isAbsent || r.marks === null || !r.classId) continue;
@@ -1178,7 +1266,6 @@ export const computeSubjectPositionsService = async (examId: string): Promise<Ex
       groups.get(key)!.push(r);
     }
 
-    // Build a bucket of (position → [ids])
     const byPosition = new Map<number, string[]>();
     for (const [, group] of groups) {
       group.sort((a, b) => Number(b.marks ?? 0) - Number(a.marks ?? 0));
@@ -1212,7 +1299,7 @@ export const computeSubjectPositionsService = async (examId: string): Promise<Ex
 };
 
 // ================================================================
-// 31. COMPUTE CLASS RANKING (no shadowing, no broken inArray)
+// 31. COMPUTE CLASS RANKING
 // ================================================================
 export const computeClassRankingService = async (examId: string): Promise<ExamResponse> => {
   try {
@@ -1220,7 +1307,6 @@ export const computeClassRankingService = async (examId: string): Promise<ExamRe
       where: eq(examResults.examId, examId),
     });
 
-    // Group by classId, then by studentId — do NOT shadow the `students` import
     const byClass = new Map<string, Map<string, TSelectExamResult[]>>();
     for (const r of results) {
       if (!r.classId) continue;
@@ -1235,7 +1321,6 @@ export const computeClassRankingService = async (examId: string): Promise<ExamRe
     for (const [, studentsInClass] of byClass.entries()) {
       const studentIdsInClass = Array.from(studentsInClass.keys());
 
-      // Fetch students for this class in one query
       const studentRows = studentIdsInClass.length
         ? await db
             .select({
@@ -1264,7 +1349,6 @@ export const computeClassRankingService = async (examId: string): Promise<ExamRe
         const totalOutOf = present.reduce((s, r) => s + Number(r.outOf), 0);
         const meanScore = present.length === 0 ? 0 : totalMarks / present.length;
 
-        // Mean grade: the grade of the mean percentage
         let meanGrade = "N/A";
         if (present.length > 0) {
           const gradesPresent = present.map((r) => r.grade).filter(Boolean) as string[];

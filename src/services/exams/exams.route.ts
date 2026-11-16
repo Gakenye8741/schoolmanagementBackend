@@ -48,13 +48,32 @@ import {
   anyAuthenticatedUser,
 } from "../../middleware/bearAuth";
 
+/**
+ * ROUTE ORDERING RULES (do not reorder without reading this first):
+ *
+ *   1. All routes whose FIRST path segment is a static literal
+ *      (`/school`, `/schedules`, `/marks`, `/student`) MUST be declared
+ *      BEFORE any route whose first segment is `:examId`.
+ *
+ *      Otherwise `GET /:examId/statistics` would match
+ *      `GET /schedules/statistics` and return 404 for a valid schedule,
+ *      and `GET /:examId/schedules` would match `GET /marks/schedules`, etc.
+ *
+ *   2. Within each prefix group, put the most specific static suffix first
+ *      (`/schedules/bulk` before `/schedules/:scheduleId`).
+ *
+ *   3. The generic `GET /:examId` must be registered LAST — it is the
+ *      catch-all for exam lookups.
+ */
 const examsRouter = Router();
 
 // ================================================================
-// EXAMS
+// 1. STATIC-PREFIX ROUTES
 // ================================================================
 
-// Static-prefix reads — must come before "/:examId"
+// ----------------------------------------------------------------
+// 1a. School-scoped reads (/school/*)
+// ----------------------------------------------------------------
 examsRouter.get(
   "/school/:schoolId",
   anyAuthenticatedUser,
@@ -70,37 +89,6 @@ examsRouter.get(
   anyAuthenticatedUser,
   listExamsByCategoryController
 );
-
-// Exam mutations
-examsRouter.post("/", adminAuth, createExamController);
-examsRouter.put("/:examId", adminAuth, updateExamController);
-examsRouter.delete("/:examId", superAdminAuth, deleteExamController);
-examsRouter.post("/:examId/lock", adminAuth, lockExamController);
-examsRouter.post("/:examId/unlock", adminAuth, unlockExamController);
-
-// Per-exam reads
-examsRouter.get(
-  "/:examId/statistics",
-  anyAuthenticatedUser,
-  getExamStatisticsController
-);
-examsRouter.get(
-  "/:examId/report",
-  anyAuthenticatedUser,
-  getExamReportController
-);
-
-// ================================================================
-// SCHEDULES
-// ================================================================
-
-// Static paths first
-examsRouter.post("/schedules", adminAuth, createScheduleController);
-examsRouter.post(
-  "/schedules/bulk",
-  adminAuth,
-  bulkCreateSchedulesController
-);
 examsRouter.get(
   "/school/:schoolId/class/:classId/schedules",
   anyAuthenticatedUser,
@@ -112,14 +100,20 @@ examsRouter.get(
   listSchedulesByDateController
 );
 
-// Per-exam schedule reads
-examsRouter.get(
-  "/:examId/schedules",
-  anyAuthenticatedUser,
-  listSchedulesByExamController
+// ----------------------------------------------------------------
+// 1b. Schedules (/schedules/*)
+// ----------------------------------------------------------------
+examsRouter.post("/schedules", adminAuth, createScheduleController);
+examsRouter.post(
+  "/schedules/bulk",
+  adminAuth,
+  bulkCreateSchedulesController
 );
-
-// Per-schedule mutations
+examsRouter.get(
+  "/schedules/:scheduleId",
+  anyAuthenticatedUser,
+  getScheduleByIdController
+);
 examsRouter.put(
   "/schedules/:scheduleId",
   adminAuth,
@@ -131,62 +125,27 @@ examsRouter.delete(
   deleteScheduleController
 );
 
-// Generic schedule lookup LAST
-examsRouter.get(
-  "/schedules/:scheduleId",
-  anyAuthenticatedUser,
-  getScheduleByIdController
-);
-
-// ================================================================
-// MARKS
-// ================================================================
-
-// Static mark mutations
+// ----------------------------------------------------------------
+// 1c. Marks (/marks/*)
+// ----------------------------------------------------------------
 examsRouter.post("/marks", adminOrTeacherAuth, enterMarkController);
 examsRouter.post("/marks/bulk", adminOrTeacherAuth, bulkEnterMarksController);
 examsRouter.post("/marks/absent", adminOrTeacherAuth, markAbsentController);
-
-// Per-mark mutations
-examsRouter.put("/marks/:markId", adminOrTeacherAuth, updateMarkController);
-examsRouter.delete("/marks/:markId", adminAuth, deleteMarkController);
-
-// Generic mark lookup LAST
-examsRouter.get(
+examsRouter.get("/marks/:markId", anyAuthenticatedUser, getResultByIdController);
+examsRouter.put(
   "/marks/:markId",
-  anyAuthenticatedUser,
-  getResultByIdController
+  adminOrTeacherAuth,
+  updateMarkController
+);
+examsRouter.delete(
+  "/marks/:markId",
+  adminAuth,
+  deleteMarkController
 );
 
-// Marksheet — per exam + class + subject
-examsRouter.get(
-  "/:examId/marksheet/:classId/:subjectId",
-  anyAuthenticatedUser,
-  getMarksheetController
-);
-
-// Publish marks
-examsRouter.post("/:examId/publish", adminAuth, publishMarksController);
-
-// Subject marks
-examsRouter.get(
-  "/:examId/subject/:subjectId/marks",
-  anyAuthenticatedUser,
-  getSubjectMarksController
-);
-
-// ================================================================
-// STUDENT-FACING
-// ================================================================
-
-// Student marks for a specific exam
-examsRouter.get(
-  "/:examId/student/:studentId/marks",
-  anyAuthenticatedUser,
-  getStudentMarksForExamController
-);
-
-// Student transcript (all exams across all terms)
+// ----------------------------------------------------------------
+// 1d. Student transcript (/student/*)
+// ----------------------------------------------------------------
 examsRouter.get(
   "/student/:studentId/transcript",
   anyAuthenticatedUser,
@@ -194,9 +153,26 @@ examsRouter.get(
 );
 
 // ================================================================
-// COMPUTATION
+// 2. EXAM-ROOTED ROUTES (/:examId/*)
 // ================================================================
 
+// ----------------------------------------------------------------
+// 2a. Exam CRUD
+// ----------------------------------------------------------------
+examsRouter.post("/", adminAuth, createExamController);
+examsRouter.put("/:examId", adminAuth, updateExamController);
+examsRouter.delete("/:examId", superAdminAuth, deleteExamController);
+
+// ----------------------------------------------------------------
+// 2b. Exam lifecycle (lock / unlock / publish)
+// ----------------------------------------------------------------
+examsRouter.post("/:examId/lock", adminAuth, lockExamController);
+examsRouter.post("/:examId/unlock", adminAuth, unlockExamController);
+examsRouter.post("/:examId/publish", adminAuth, publishMarksController);
+
+// ----------------------------------------------------------------
+// 2c. Exam computation (must run before reads that depend on them)
+// ----------------------------------------------------------------
 examsRouter.post(
   "/:examId/compute-grades",
   adminAuth,
@@ -212,6 +188,35 @@ examsRouter.post(
   adminAuth,
   computeClassRankingController
 );
+
+// ----------------------------------------------------------------
+// 2d. Exam reads (multi-segment)
+// ----------------------------------------------------------------
+examsRouter.get(
+  "/:examId/statistics",
+  anyAuthenticatedUser,
+  getExamStatisticsController
+);
+examsRouter.get(
+  "/:examId/report",
+  anyAuthenticatedUser,
+  getExamReportController
+);
+examsRouter.get(
+  "/:examId/schedules",
+  anyAuthenticatedUser,
+  listSchedulesByExamController
+);
+examsRouter.get(
+  "/:examId/marksheet/:classId/:subjectId",
+  anyAuthenticatedUser,
+  getMarksheetController
+);
+examsRouter.get(
+  "/:examId/subject/:subjectId/marks",
+  anyAuthenticatedUser,
+  getSubjectMarksController
+);
 examsRouter.get(
   "/:examId/subject-statistics",
   anyAuthenticatedUser,
@@ -222,9 +227,14 @@ examsRouter.get(
   anyAuthenticatedUser,
   computeClassPerformanceController
 );
+examsRouter.get(
+  "/:examId/student/:studentId/marks",
+  anyAuthenticatedUser,
+  getStudentMarksForExamController
+);
 
 // ================================================================
-// GENERIC EXAM LOOKUP — LAST
+// 3. GENERIC EXAM LOOKUP — MUST BE LAST
 // ================================================================
 examsRouter.get(
   "/:examId",

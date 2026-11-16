@@ -74,7 +74,7 @@ import {
   checkClassConflictController,
   checkRoomConflictController,
   validateSchoolTimetableController,
-  // ── 🆕 Setup / Generator / Bulk / Analytics ──
+  // ── Setup / Generator / Bulk / Analytics ──
   previewSchoolTimetableController,
   generateSchoolTimetableController,
   seedStandardSchoolDayController,
@@ -120,6 +120,25 @@ const timetableRouter = Router();
       you from ordering bugs when params are involved — always
       keep static first.
 
+   ⚙️  GENERATOR CONFIG (informational)
+   ================================================================
+   The timetable generator accepts a `config` object in the POST
+   body of the two /timetable/generate routes below. This object
+   carries rules that are NOT in the URL:
+
+     • maxPerTeacherPerDay     (number)
+     • maxPerTeacherPerWeek    (number)
+     • morningHeavySubjectIds  (string[])
+     • maxDoublesPerDay        (number, 0 = no doubles)
+     • spreadSubjects          (boolean)
+     • dailySubjectIds         (string[]) — 0 = subject blocked
+     • maxPerSubjectPerDay     ({ [subjectId]: cap } | 0 = blocked)
+     • avoidAdjacentPairs      ([subjectA, subjectB][])
+     • seed                    (number)
+
+   That's why no new routes are needed — everything above flows
+   through the request body, not the path.
+
    ACCESS LEVELS
    ─────────────────────────────────────────────────────────────
    schoolManagementAuth   super_admin, school_admin, principal,
@@ -142,7 +161,7 @@ timetableRouter.delete("/periods/:periodId", schoolManagementAuth, deletePeriodC
 timetableRouter.put("/schools/:schoolId/periods/reorder", schoolManagementAuth, reorderPeriodsController);
 timetableRouter.get("/schools/:schoolId/periods/validate", schoolManagementAuth, validatePeriodScheduleController);
 
-// ── 🆕 One-click seed (13-period Kenyan day) — School Management ──
+// ── One-click seed (13-period Kenyan day) — School Management ──
 timetableRouter.post(
   "/schools/:schoolId/periods/seed-standard",
   schoolManagementAuth,
@@ -193,10 +212,15 @@ timetableRouter.get("/slots/:slotId", anyAuthenticatedUser, getTimetableSlotById
 
 
 // ================================================================
-// 3. 🆕 TIMETABLE GENERATOR (School Management)
+// 3. TIMETABLE GENERATOR (School Management)
 // ================================================================
-
+//
 // ⚠️ Order: /generate/preview BEFORE /generate (more-specific first)
+// ⚠️ `config` travels in the request body, not the URL:
+//       { classIds, allocations, config, options? }
+//    All generator rules (daily subjects, per-day caps, doubles,
+//    adjacency) are sub-fields of `config`.
+
 timetableRouter.post(
   "/schools/:schoolId/timetable/generate/preview",
   schoolManagementAuth,
@@ -210,7 +234,7 @@ timetableRouter.post(
 
 
 // ================================================================
-// 4. 🆕 SETUP / RESET / BULK UTILITIES (School Management)
+// 4. SETUP / RESET / BULK UTILITIES (School Management)
 // ================================================================
 
 // Wipe ALL slots + periods for a school (requires ?confirm=true)

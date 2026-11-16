@@ -1,5 +1,6 @@
 // controllers/exams.controller.ts
 import { Request, Response } from "express";
+import type { ZodError } from "zod";
 import {
   createExamService,
   getExamByIdService,
@@ -59,8 +60,34 @@ import {
   studentIdParamSchema,
 } from "../../validators/exams.validators";
 
-const getUserId = (req: Request): string | undefined =>
-  (req as any).user?.id as string | undefined;
+// ================================================================
+// Helpers
+// ================================================================
+
+/** Works with the common shapes an auth middleware attaches to the request. */
+const getUserId = (req: Request): string | undefined => {
+  const u: any = (req as any).user ?? (req as any).auth ?? {};
+  return u.id ?? u.userId ?? u.sub ?? u.user?.id ?? u.user?.userId ?? undefined;
+};
+
+/** "entries.2.marks: Marks cannot exceed outOf." — the first problem found. */
+const firstIssue = (error: ZodError): string => {
+  const issue = error.issues[0];
+  if (!issue) return "";
+  const path = issue.path.join(".");
+  return path ? `${path}: ${issue.message}` : issue.message;
+};
+
+/**
+ * Some routes (marksheet, subject marks) have no :schoolId segment.
+ * Read it from the params, then ?schoolId=, then the signed-in user.
+ */
+const resolveSchoolId = (req: Request): string | undefined => {
+  const fromParams = (req.params as any)?.schoolId as string | undefined;
+  const fromQuery = typeof req.query.schoolId === "string" ? req.query.schoolId : undefined;
+  const fromUser = (req as any).user?.schoolId ?? (req as any).user?.user?.schoolId;
+  return fromParams ?? fromQuery ?? fromUser;
+};
 
 // ================================================================
 // EXAMS
@@ -72,7 +99,7 @@ export const createExamController = async (req: Request, res: Response): Promise
     if (!validation.success) {
       res.status(400).json({
         success: false,
-        message: "We couldn't create the exam — check the highlighted fields and try again.",
+        message: `We couldn't create the exam — ${firstIssue(validation.error) || "check the highlighted fields and try again."}`,
         errors: validation.error.format(),
       });
       return;
@@ -185,7 +212,11 @@ export const updateExamController = async (req: Request, res: Response): Promise
     const p = examIdParamSchema.safeParse(req.params);
     const body = updateExamSchema.safeParse(req.body);
     if (!p.success || !body.success) {
-      res.status(400).json({ success: false, message: "Check the exam ID and highlighted fields." });
+      const bad = !p.success ? p.error : !body.success ? body.error : undefined;
+      res.status(400).json({
+        success: false,
+        message: `We couldn't update the exam — ${bad ? firstIssue(bad) : "check the exam ID and highlighted fields."}`,
+      });
       return;
     }
     const result = await updateExamService(p.data.examId, body.data);
@@ -297,7 +328,7 @@ export const createScheduleController = async (req: Request, res: Response): Pro
     if (!validation.success) {
       res.status(400).json({
         success: false,
-        message: "We couldn't create the schedule — check the highlighted fields.",
+        message: `We couldn't create the schedule — ${firstIssue(validation.error) || "check the highlighted fields."}`,
         errors: validation.error.format(),
       });
       return;
@@ -306,7 +337,7 @@ export const createScheduleController = async (req: Request, res: Response): Pro
     res.status(result.success ? 201 : 400).json({
       ...result,
       message: result.success
-        ? "Exam schedule created."
+        ? result.message
         : `We couldn't create the schedule — ${result.message}`,
     });
   } catch (error: any) {
@@ -323,7 +354,7 @@ export const bulkCreateSchedulesController = async (req: Request, res: Response)
     if (!validation.success) {
       res.status(400).json({
         success: false,
-        message: "We couldn't create the schedules — check the highlighted fields.",
+        message: `We couldn't create the schedules — ${firstIssue(validation.error) || "check the highlighted fields."}`,
         errors: validation.error.format(),
       });
       return;
@@ -436,7 +467,11 @@ export const updateScheduleController = async (req: Request, res: Response): Pro
     const p = scheduleIdParamSchema.safeParse(req.params);
     const body = updateScheduleSchema.safeParse(req.body);
     if (!p.success || !body.success) {
-      res.status(400).json({ success: false, message: "Check the schedule ID and highlighted fields." });
+      const bad = !p.success ? p.error : !body.success ? body.error : undefined;
+      res.status(400).json({
+        success: false,
+        message: `We couldn't update the schedule — ${bad ? firstIssue(bad) : "check the schedule ID and highlighted fields."}`,
+      });
       return;
     }
     const result = await updateScheduleService(p.data.scheduleId, body.data);
@@ -489,7 +524,7 @@ export const enterMarkController = async (req: Request, res: Response): Promise<
     if (!validation.success) {
       res.status(400).json({
         success: false,
-        message: "We couldn't enter the mark — check the highlighted fields.",
+        message: `We couldn't enter the mark — ${firstIssue(validation.error) || "check the highlighted fields."}`,
         errors: validation.error.format(),
       });
       return;
@@ -518,7 +553,7 @@ export const bulkEnterMarksController = async (req: Request, res: Response): Pro
     if (!validation.success) {
       res.status(400).json({
         success: false,
-        message: "We couldn't enter the marks — check the highlighted fields.",
+        message: `We couldn't enter the marks — ${firstIssue(validation.error) || "check the highlighted fields."}`,
         errors: validation.error.format(),
       });
       return;
@@ -546,7 +581,11 @@ export const updateMarkController = async (req: Request, res: Response): Promise
     const p = markIdParamSchema.safeParse(req.params);
     const body = updateMarkSchema.safeParse(req.body);
     if (!p.success || !body.success) {
-      res.status(400).json({ success: false, message: "Check the mark ID and highlighted fields." });
+      const bad = !p.success ? p.error : !body.success ? body.error : undefined;
+      res.status(400).json({
+        success: false,
+        message: `We couldn't update the mark — ${bad ? firstIssue(bad) : "check the mark ID and highlighted fields."}`,
+      });
       return;
     }
     const result = await updateMarkService(p.data.markId, body.data, userId);
@@ -593,7 +632,7 @@ export const markAbsentController = async (req: Request, res: Response): Promise
     if (!validation.success) {
       res.status(400).json({
         success: false,
-        message: "Check the highlighted fields and try again.",
+        message: `We couldn't mark absence — ${firstIssue(validation.error) || "check the highlighted fields and try again."}`,
         errors: validation.error.format(),
       });
       return;
@@ -652,14 +691,22 @@ export const getStudentMarksForExamController = async (req: Request, res: Respon
   }
 };
 
+/**
+ * GET /:examId/marksheet/:classId/:subjectId?schoolId=…
+ * (schoolId is optional — it falls back to the signed-in user's school.)
+ */
 export const getMarksheetController = async (req: Request, res: Response): Promise<void> => {
   try {
-    const s = schoolIdParamSchema.safeParse(req.params);
+    const s = schoolIdParamSchema.safeParse({ schoolId: resolveSchoolId(req) });
     const e = examIdParamSchema.safeParse(req.params);
     const c = classIdParamSchema.safeParse(req.params);
     const sub = subjectIdParamSchema.safeParse(req.params);
     if (!s.success || !e.success || !c.success || !sub.success) {
-      res.status(400).json({ success: false, message: "Invalid school, exam, class, or subject ID." });
+      const bad = [s, e, c, sub].find((r) => !r.success) as { error: ZodError } | undefined;
+      res.status(400).json({
+        success: false,
+        message: `Invalid marksheet request${bad ? ` — ${firstIssue(bad.error)}` : "."}`,
+      });
       return;
     }
     const result = await getMarksheetService(s.data.schoolId, e.data.examId, c.data.classId, sub.data.subjectId);
@@ -697,9 +744,13 @@ export const publishMarksController = async (req: Request, res: Response): Promi
   }
 };
 
+/**
+ * GET /:examId/subject/:subjectId/marks?schoolId=…
+ * (schoolId is optional — it falls back to the signed-in user's school.)
+ */
 export const getSubjectMarksController = async (req: Request, res: Response): Promise<void> => {
   try {
-    const s = schoolIdParamSchema.safeParse(req.params);
+    const s = schoolIdParamSchema.safeParse({ schoolId: resolveSchoolId(req) });
     const e = examIdParamSchema.safeParse(req.params);
     const sub = subjectIdParamSchema.safeParse(req.params);
     if (!s.success || !e.success || !sub.success) {

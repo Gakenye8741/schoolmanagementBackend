@@ -33,6 +33,7 @@ import {
   exportUsersController,
 } from "./users.controller";
 import {
+  anyAuthenticatedUser,
   schoolManagementAuth,
   superAdminAuth,
 } from "../../middleware/bearAuth";
@@ -49,7 +50,7 @@ usersRouter.get("/admin/users", superAdminAuth, listAllUsersController);
 // ================================================================
 usersRouter.post(
   "/schools/:schoolId/users",
-  schoolManagementAuth,
+  anyAuthenticatedUser,
   createUserController
 );
 usersRouter.post(

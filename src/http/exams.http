@@ -273,6 +273,7 @@ Content-Type: application/json
 }
 
 ### 3.8 Delete a mark
+# NOTE: this removes enterMark1's row — later sections must NOT rely on its id
 DELETE {{examsUrl}}/marks/{{enterMark1.response.body.$.result.id}}
 
 
@@ -281,6 +282,7 @@ DELETE {{examsUrl}}/marks/{{enterMark1.response.body.$.result.id}}
 # ================================================================
 
 ### 4.1 Bulk enter marks for the whole class on subject 1
+# @name bulkEnter1
 POST {{examsUrl}}/marks/bulk
 Content-Type: application/json
 
@@ -387,7 +389,8 @@ Content-Type: application/json
 }
 
 ### 9.3 Try to update a mark on locked exam — expect 400
-PUT {{examsUrl}}/marks/{{enterMark1.response.body.$.result.id}}
+# Uses the id from 4.1 (enterMark1's row was deleted in 3.8).
+PUT {{examsUrl}}/marks/{{bulkEnter1.response.body.$.results[0].id}}
 Content-Type: application/json
 
 {
@@ -395,7 +398,7 @@ Content-Type: application/json
 }
 
 ### 9.4 Try to delete a mark on locked exam — expect 400
-DELETE {{examsUrl}}/marks/{{enterMark1.response.body.$.result.id}}
+DELETE {{examsUrl}}/marks/{{bulkEnter1.response.body.$.results[0].id}}
 
 ### 9.5 Try to delete a locked exam — expect 400
 DELETE {{examsUrl}}/{{examId}}
@@ -422,6 +425,10 @@ POST {{examsUrl}}/{{examId}}/lock
 # ================================================================
 # 10. NEGATIVE TESTS
 # ================================================================
+
+### 10.0 Unlock exam so mark-validations (10.5–10.8) fire before the
+###      "Exam is locked" check inside the service.
+POST {{examsUrl}}/{{examId}}/unlock
 
 ### 10.1 Create exam with invalid category — expect 400
 POST {{examsUrl}}
@@ -495,6 +502,9 @@ Content-Type: application/json
 }
 
 ### 10.7 Enter mark with no marks and not absent — expect 400
+# NOTE: this relies on enterMarkSchema rejecting `marks: undefined` when
+#       `isAbsent` is false. If your schema treats marks as optional/null,
+#       this test will insert a blank row instead of 400-ing.
 POST {{examsUrl}}/marks
 Content-Type: application/json
 
@@ -507,6 +517,8 @@ Content-Type: application/json
 }
 
 ### 10.8 Bulk marks with duplicate students — expect 400
+# Service inserts the first, then hits the unique(exam,student,subject)
+# constraint on the second — transaction rolls back, 400 returned.
 POST {{examsUrl}}/marks/bulk
 Content-Type: application/json
 
@@ -540,7 +552,9 @@ GET {{examsUrl}}/00000000-0000-0000-0000-000000000099
 ### 10.11 Get marksheet with invalid UUIDs — expect 400
 GET {{examsUrl}}/not-a-uuid/marksheet/{{classId}}/{{subjectId}}
 
-### 10.12 No auth — expect 401 (clear cookie jar first)
+### 10.12 No auth — expect 401
+# Clear cookies first (e.g. delete .rest-client/.http cache, or use a
+# separate VS Code "REST Client: Clear All Cookies" command) before running.
 POST {{examsUrl}}
 Content-Type: application/json
 

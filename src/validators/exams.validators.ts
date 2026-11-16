@@ -45,7 +45,7 @@ const examCategory = z.enum(
 );
 
 // ================================================================
-// EXAMS
+// EXAMS (term-level — never tied to a class)
 // ================================================================
 const examObjectSchema = z.object({
   schoolId: uuid("school ID"),
@@ -86,28 +86,65 @@ export const listExamsByCategorySchema = z.object({
 
 // ================================================================
 // EXAM SCHEDULES
+//
+// Who sits the paper? Provide exactly ONE of:
+//   • classId        → a single class
+//   • gradeLevelId   → every class (stream) in that grade
+//   • allClasses     → every class in the school
 // ================================================================
-const scheduleEntrySchema = z
-  .object({
-    classId: uuid("class ID"),
-    subjectId: uuid("subject ID"),
-    examDate: isoDate,
-    startTime: isoTime.optional().nullable(),
-    endTime: isoTime.optional().nullable(),
-    venue: z.string().trim().max(100).optional().nullable(),
-    invigilatorId: uuid("invigilator ID").optional().nullable(),
-  })
-  .refine((d) => !d.startTime || !d.endTime || d.endTime > d.startTime, {
-    message: "endTime must be after startTime.",
-    path: ["endTime"],
-  });
+const scheduleBaseShape = {
+  classId: uuid("class ID").optional().nullable(),
+  gradeLevelId: uuid("grade level ID").optional().nullable(),
+  allClasses: z.boolean().optional().default(false),
+  subjectId: uuid("subject ID"),
+  examDate: isoDate,
+  startTime: isoTime.optional().nullable(),
+  endTime: isoTime.optional().nullable(),
+  venue: z.string().trim().max(100).optional().nullable(),
+  invigilatorId: uuid("invigilator ID").optional().nullable(),
+};
 
-export const createScheduleSchema = scheduleEntrySchema.and(
-  z.object({
+type ScheduleCheckShape = {
+  classId?: string | null;
+  gradeLevelId?: string | null;
+  allClasses?: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
+};
+
+const scheduleChecks = (d: ScheduleCheckShape, ctx: z.RefinementCtx) => {
+  const targets = [!!d.classId, !!d.gradeLevelId, d.allClasses === true].filter(Boolean).length;
+  if (targets === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Choose who sits this paper: a class, a grade level, or all classes.",
+      path: ["gradeLevelId"],
+    });
+  } else if (targets > 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Provide only one of classId, gradeLevelId or allClasses.",
+      path: ["gradeLevelId"],
+    });
+  }
+  if (d.startTime && d.endTime && d.endTime <= d.startTime) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "endTime must be after startTime.",
+      path: ["endTime"],
+    });
+  }
+};
+
+const scheduleEntrySchema = z.object(scheduleBaseShape).superRefine(scheduleChecks);
+
+export const createScheduleSchema = z
+  .object({
     schoolId: uuid("school ID"),
     examId: uuid("exam ID"),
+    ...scheduleBaseShape,
   })
-);
+  .superRefine(scheduleChecks);
 
 export const bulkCreateSchedulesSchema = z.object({
   schoolId: uuid("school ID"),
@@ -153,14 +190,14 @@ export const enterMarkSchema = z
     isAbsent: z.boolean().optional().default(false),
     remarks: z.string().trim().max(1000).optional().nullable(),
   })
-  .refine((d) => d.isAbsent === true || d.marks !== null, {
+  .refine((d) => d.isAbsent === true || (d.marks !== null && d.marks !== undefined), {
     message: "Provide marks, or mark the student as absent.",
     path: ["marks"],
   })
-  .refine((d) => d.marks === null || d.marks === undefined || Number(d.marks) <= Number(d.outOf ?? "100"), {
-    message: "Marks cannot exceed outOf.",
-    path: ["marks"],
-  });
+  .refine(
+    (d) => d.marks === null || d.marks === undefined || Number(d.marks) <= Number(d.outOf ?? "100"),
+    { message: "Marks cannot exceed outOf.", path: ["marks"] }
+  );
 
 export const bulkEnterMarksSchema = z.object({
   schoolId: uuid("school ID"),
@@ -177,7 +214,7 @@ export const bulkEnterMarksSchema = z.object({
           isAbsent: z.boolean().optional().default(false),
           remarks: z.string().trim().max(1000).optional().nullable(),
         })
-        .refine((d) => d.isAbsent === true || d.marks !== null, {
+        .refine((d) => d.isAbsent === true || (d.marks !== null && d.marks !== undefined), {
           message: "Provide marks, or mark the student as absent.",
           path: ["marks"],
         })
