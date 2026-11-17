@@ -70,6 +70,7 @@ import {
   adminOrTeacherAuth,
   superAdminAuth,
   anyAuthenticatedUser,
+  schoolAdminAuth,
 } from "../../middleware/bearAuth";
 
 const academicStructureRouter = Router();
@@ -232,12 +233,12 @@ academicStructureRouter.get(
 // Per-subject actions and reads
 academicStructureRouter.post(
   "/subjects/:subjectId/duplicate",
-  adminAuth,
+  schoolAdminAuth,
   duplicateSubjectController
 );
 academicStructureRouter.put(
   "/subjects/:subjectId/code",
-  adminAuth,
+  schoolAdminAuth,
   renameSubjectCodeController
 );
 academicStructureRouter.get(
@@ -247,12 +248,12 @@ academicStructureRouter.get(
 );
 academicStructureRouter.put(
   "/subjects/:subjectId",
-  adminAuth,
+  schoolAdminAuth,
   updateSubjectController
 );
 academicStructureRouter.delete(
   "/subjects/:subjectId",
-  superAdminAuth,
+  schoolAdminAuth,
   deleteSubjectController
 );
 

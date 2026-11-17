@@ -12,7 +12,7 @@
 ###   - apiLimiter  = 100 req / 15 min on /api/*
 ### =========================================================================
 
-@baseUrl = http://localhost:5000/api/auth
+@baseUrl = https://school-api.gakenye-ndiritu.co.ke/api/auth
 @academicStructureUrl = http://localhost:5000/api/academic-structure
 @contentType = application/json
 
